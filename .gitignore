@@ -1,0 +1,22 @@
+node_modules
+dist
+release
+*.log
+.DS_Store
+.env
+.env.*
+*.local
+
+# Local user state (proxy configs, sessions) — never end up here, but just in case
+proxy-config.json
+xray-config.json
+
+# Local icon (binary) — kept out of repo by default; remove if you want to commit it
+build/icon.ico
+src/renderer/public/avatar.png
+resources/xray/xray.exe
+resources/xray/xray
+resources/xray/geoip.dat
+resources/xray/geosite.dat
+resources/zapret/*
+!resources/zapret/README.md
