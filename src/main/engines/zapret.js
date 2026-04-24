@@ -63,9 +63,31 @@ class ZapretEngine {
     return this._cachedBinary;
   }
 
+  // Parse a Zapret2 strategy file (.txt) into a winws argv list.
+  // Format: blank lines separate strategy blocks; winws expects them joined with `--new`.
+  parseStrategyFile(filePath) {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const blocks = raw
+      .replace(/\r/g, '')
+      .split(/\n\s*\n+/)             // split on blank lines
+      .map((b) => b.split('\n').map((l) => l.trim()).filter(Boolean).join(' ').trim())
+      .filter(Boolean);
+
+    const args = [];
+    blocks.forEach((b, i) => {
+      if (i > 0) args.push('--new');
+      // Tokenize, respecting double-quoted segments.
+      const tokens = b.match(/"[^"]*"|\S+/g) || [];
+      for (const t of tokens) {
+        args.push(t.startsWith('"') && t.endsWith('"') ? t.slice(1, -1) : t);
+      }
+    });
+    return args;
+  }
+
   // Default arg set. Strategy preference order:
-  //   1. resources/zapret/args.txt          (raw user-supplied flags)
-  //   2. resources/zapret/bat/<strategy>.txt (Zapret2 GUI strategy file via winws @file)
+  //   1. resources/zapret/args.txt           (raw user-supplied flags)
+  //   2. resources/zapret/bat/<strategy>.txt (Zapret2 GUI strategy file, parsed)
   //   3. inline fallback flags
   defaultArgs() {
     const argsFile = path.join(this.root, 'args.txt');
@@ -75,7 +97,6 @@ class ZapretEngine {
     }
     const batDir = path.join(this.root, 'bat');
     if (fs.existsSync(batDir)) {
-      // Default strategy: a broadly-working "all-sites" Zapret2 preset.
       const preferred = [
         'general_alt11_191_allsites.txt',
         'alt_general_faketlsauto_allsites.txt',
@@ -83,7 +104,14 @@ class ZapretEngine {
       ];
       for (const name of preferred) {
         const full = path.join(batDir, name);
-        if (fs.existsSync(full)) return [`@${full}`];
+        if (fs.existsSync(full)) {
+          try {
+            const parsed = this.parseStrategyFile(full);
+            if (parsed.length) return parsed;
+          } catch (e) {
+            this.logger.error('[zapret] strategy parse failed', name, e?.message);
+          }
+        }
       }
     }
     return [

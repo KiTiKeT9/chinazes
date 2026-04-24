@@ -59,6 +59,13 @@ async function applyProxyToAllServiceSessions() {
   }
 }
 
+// Suppress Windows smart card / security key prompt that pops up when a site
+// requests a TLS client certificate. We don't have any to offer.
+app.on('select-client-certificate', (event, _wc, _url, _list, callback) => {
+  event.preventDefault();
+  callback(null);
+});
+
 app.whenReady().then(async () => {
   // Pre-create partition sessions so proxy state can be applied early.
   for (const partition of SERVICE_PARTITIONS) {
