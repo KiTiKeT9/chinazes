@@ -10,13 +10,13 @@ const FREE_POOL_URLS = new Set(FREE_POOLS.map((p) => p.url));
 const SAFETY_ACK_KEY = 'chinazes:free-pool-safety-ack';
 
 const ENGINES = [
-  { id: 'xray',   name: 'Xray / v2ray', desc: 'VLESS, VMess, Trojan, Shadowsocks, Hysteria2 + подписки и бесплатные пулы' },
-  { id: 'warp',   name: 'Cloudflare WARP', desc: 'Бесплатный, SOCKS5-режим — работает только в приложении' },
+  { id: 'warp', name: '🛡️ WARP+ (Recommended)', desc: 'Cloudflare WARP через warp-plus: авто-сканер endpoint + обфускация. UDP — у некоторых провайдеров может не работать.' },
+  { id: 'xray', name: 'Xray / v2ray',            desc: 'VLESS/VMess/Trojan/SS/Hysteria2 + подписки. Включи фильтр «Только CDN (WS+TLS)» — TCP 443 TLS, лучше работает в РФ.' },
 ];
 
 export default function SettingsModal({ open, onClose, proxyState }) {
   const [tab, setTab] = useState('connection'); // 'connection' | 'appearance'
-  const [engine, setEngine] = useState('xray');
+  const [engine, setEngine] = useState('warp');
   const [config, setConfig] = useState(null);
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
@@ -26,6 +26,7 @@ export default function SettingsModal({ open, onClose, proxyState }) {
   const [latencies, setLatencies] = useState([]);   // ms or null per server
   const [probing, setProbing] = useState(false);
   const [hideUnreachable, setHideUnreachable] = useState(true);
+  const [cdnOnly, setCdnOnly] = useState(false);
   const [countryFilter, setCountryFilter] = useState('all');
   const [showSafetyModal, setShowSafetyModal] = useState(false);
   const [pendingPoolUrl, setPendingPoolUrl] = useState('');
@@ -459,6 +460,14 @@ export default function SettingsModal({ open, onClose, proxyState }) {
                         {config?.xray?.subscription && (
                           <span className="muted"> · {new URL(config.xray.subscription).host}</span>
                         )}
+                        <label className="server-list__filter" title="Оставить только VLESS/VMess через WebSocket+TLS — обычно через Cloudflare CDN, лучше работают в РФ">
+                          <input
+                            type="checkbox"
+                            checked={cdnOnly}
+                            onChange={(e) => setCdnOnly(e.target.checked)}
+                          />
+                          Только CDN (WS+TLS)
+                        </label>
                         {latencies.length > 0 && (
                           <label className="server-list__filter">
                             <input
@@ -474,6 +483,7 @@ export default function SettingsModal({ open, onClose, proxyState }) {
                         {servers
                           .map((s, i) => ({ s, i, lat: latencies[i], country: detectCountry(s.meta.name || '', s.meta.address || '') }))
                           .filter(({ country }) => countryFilter === 'all' || (country.code || 'XX') === countryFilter)
+                          .filter(({ s }) => !cdnOnly || (s.meta.network === 'ws' && s.meta.security === 'tls'))
                           .filter(({ lat }) => !(hideUnreachable && latencies.length > 0 && lat == null))
                           .sort((a, b) => {
                             if (a.lat == null && b.lat == null) return 0;
@@ -518,19 +528,63 @@ export default function SettingsModal({ open, onClose, proxyState }) {
               {engine === 'warp' && (
                 <div className="engine-panel">
                   <p className="modal__hint">
-                    Cloudflare <b>WARP</b> — бесплатный обход, работает в <b>SOCKS5-режиме</b>,
-                    трафик идёт только через приложение.
+                    <b>🛡️ WARP+ Recommended — just works.</b> Использует Cloudflare WARP, но через
+                    <b> warp-plus</b> с авто-сканером рабочих эндпоинтов и AmneziaWG-обфускацией —
+                    обходит блокировки UDP и DPI в РФ. Без аккаунтов, без серверов, не требует админ-прав.
                   </p>
+
                   <ol className="steps">
-                    <li>Установи бесплатное приложение <b>1.1.1.1 / WARP</b> с <a href="https://1.1.1.1/" target="_blank" rel="noreferrer">1.1.1.1</a>.</li>
-                    <li>После установки закрой его — нам нужен только <code>warp-cli</code> в PATH.</li>
-                    <li>Нажми <b>Connect</b> ниже. Первый запуск зарегистрирует бесплатный аккаунт.</li>
+                    <li>Скачай последний релиз с <a href="https://github.com/bepass-org/warp-plus/releases/latest" target="_blank" rel="noreferrer">github.com/bepass-org/warp-plus</a> (файл <code>warp-plus_windows-amd64.zip</code>).</li>
+                    <li>Распакуй <code>warp-plus.exe</code> в:<br/><code>resources/warp-plus/warp-plus.exe</code></li>
+                    <li>Нажми <b>Connect</b>. Первый запуск ~30 сек (сканирует endpoint), потом мгновенный.</li>
                   </ol>
                   <p className="modal__hint muted">
-                    Локальный SOCKS5 будет на <code>127.0.0.1:40000</code>, применяется к webview приложения.
+                    Локальный SOCKS5 на <code>127.0.0.1:8086</code>. Кеш сканера и WG-конфиг хранятся
+                    в <code>%APPDATA%/Chinazes/warp-plus-cache/</code>. Если перестало работать —
+                    удали кеш, при следующем Connect пересканирует.
                   </p>
                 </div>
               )}
+
+              <details className="zapret-howto" open>
+                <summary>
+                  <span>🛡️ Рекомендуемый системный VPN: AmneziaVPN (от российской команды)</span>
+                  <span className="muted"> — открыть гайд</span>
+                </summary>
+                <div className="zapret-howto__body">
+                  <p className="modal__hint">
+                    <b>AmneziaVPN</b> — open-source клиент специально для обхода блокировок в РФ.
+                    Поддерживает <b>OpenVPN+Cloak</b>, <b>Shadowsocks+Cloak</b> (TCP 443 TLS — выглядит
+                    как обычный HTTPS, DPI не видит) и AmneziaWG (обфусцированный WireGuard).
+                    Работает <b>системно</b> — все приложения в Windows получают доступ.
+                  </p>
+
+                  <h4 className="settings-section__title">Установка</h4>
+                  <ol className="steps">
+                    <li>Скачай Windows-версию с <a href="https://amnezia.org/downloads" target="_blank" rel="noreferrer">amnezia.org/downloads</a> или с <a href="https://github.com/amnezia-vpn/amnezia-client/releases/latest" target="_blank" rel="noreferrer">github.com/amnezia-vpn/amnezia-client</a>.</li>
+                    <li>Установи и запусти AmneziaVPN.</li>
+                    <li>Можно использовать <b>бесплатные серверы команды</b> (вкладка «Free Servers» в приложении), либо настроить свой VPS за ~$5/мес — Amnezia сама развернёт сервер по SSH.</li>
+                  </ol>
+
+                  <h4 className="settings-section__title">Что выбрать в Amnezia</h4>
+                  <p className="modal__hint">
+                    Для жёстких блокировок: <b>OpenVPN over Cloak</b> или <b>Shadowsocks over Cloak</b> —
+                    эти протоколы маскируются под HTTPS, обходят DPI. Если работает обычный
+                    WireGuard — он быстрее, но в РФ часто режется.
+                  </p>
+
+                  <h4 className="settings-section__title">Использование с Chinazes</h4>
+                  <p className="modal__hint">
+                    Включи Amnezia системно → Chinazes автоматически использует его (как и любая программа).
+                    В Chinazes выбери движок «Xray» без подписки и не нажимай Connect — трафик
+                    пойдёт через системный Amnezia.
+                  </p>
+
+                  <p className="modal__hint muted">
+                    Полный гайд: <a href="https://docs.amnezia.org/" target="_blank" rel="noreferrer">docs.amnezia.org</a>
+                  </p>
+                </div>
+              </details>
 
               <details className="zapret-howto">
                 <summary>

@@ -17,6 +17,7 @@ src/renderer/public/avatar.png
 public/avatar.png
 resources/psiphon/*.exe
 resources/psiphon/psiphon-tunnel-core-master/
+resources/warp-plus/*.exe
 resources/zapret/
 psi.zip
 *.zip

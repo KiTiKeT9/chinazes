@@ -47,7 +47,7 @@ function parseVmess(link) {
   });
 
   return {
-    meta: { protocol: 'vmess', name: ps, address, port: Number(port) },
+    meta: { protocol: 'vmess', name: ps, address, port: Number(port), network: net, security: tls ? 'tls' : 'none' },
     outbound: {
       tag: 'proxy',
       protocol: 'vmess',
@@ -108,7 +108,7 @@ function parseVless(link) {
   });
 
   return {
-    meta: { protocol: 'vless', name, address, port },
+    meta: { protocol: 'vless', name, address, port, network: type, security },
     outbound: {
       tag: 'proxy',
       protocol: 'vless',

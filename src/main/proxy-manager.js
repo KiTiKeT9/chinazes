@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const { XrayEngine } = require('./engines/xray');
-const { WarpEngine } = require('./engines/warp');
+const { WarpPlusEngine } = require('./engines/warp-plus');
 const { PsiphonEngine } = require('./engines/psiphon');
 const { parseShareLink, fetchSubscription, isSubscriptionUrl } = require('./link-parser');
 
@@ -36,7 +36,7 @@ function getStoredConfig() {
     return JSON.parse(fs.readFileSync(configPath(), 'utf8'));
   } catch {
     return {
-      engine: 'xray',
+      engine: 'warp',  // WARP+ is the recommended default — works out of the box in RU
       xray: { link: '', subscription: '', servers: [], selectedIndex: 0, meta: null },
       warp: {},
       psiphon: {},
@@ -65,15 +65,18 @@ function init(options) {
     userDataDir: ctx.userDataDir,
     resourcesDir: ctx.resourcesDir,
   });
-  engines.warp = new WarpEngine({});
+  engines.warp = new WarpPlusEngine({
+    resourcesDir: ctx.resourcesDir,
+    userDataDir: ctx.userDataDir,
+  });
   engines.psiphon = new PsiphonEngine({
     resourcesDir: ctx.resourcesDir,
     userDataDir: ctx.userDataDir,
   });
 
   const stored = getStoredConfig();
-  // If older config has engine='zapret' (now removed), fall back to xray.
-  const engine = ['xray', 'warp', 'psiphon'].includes(stored.engine) ? stored.engine : 'xray';
+  // Migrate old engine ids: zapret/snowflake were removed. Fall back to warp.
+  const engine = ['xray', 'warp', 'psiphon'].includes(stored.engine) ? stored.engine : 'warp';
   setState({ engine });
 }
 
@@ -203,9 +206,9 @@ async function start() {
         status: 'connected',
         engine: 'warp',
         scope: 'app',
-        server: { name: 'Cloudflare WARP', protocol: 'warp' },
+        server: { name: 'WARP+ (auto-scanner)', protocol: 'warp+' },
         socksPort: result.socksPort,
-        message: '',
+        message: 'WARP+ via warp-plus — endpoint scanner + AmneziaWG obfuscation',
       });
     } else if (engineId === 'psiphon') {
       result = await engine.start();
