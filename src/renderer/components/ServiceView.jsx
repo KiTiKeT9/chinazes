@@ -32,9 +32,21 @@ const SERVICE_CSS = {
   `,
 };
 
+const URL_KEY = (id) => `chinazes:last-url:${id}`;
+
+function loadLastUrl(serviceId, fallback) {
+  try {
+    const u = localStorage.getItem(URL_KEY(serviceId));
+    if (u && /^https?:\/\//.test(u)) return u;
+  } catch {}
+  return fallback;
+}
+
 export default function ServiceView({ service, visible, registerRef }) {
   const ref = useRef(null);
   const [loading, setLoading] = useState(true);
+  // Use the last-known URL (persisted across app restarts) as initial src.
+  const initialUrl = useRef(loadLastUrl(service.id, service.url)).current;
 
   useEffect(() => {
     const wv = ref.current;
@@ -49,17 +61,26 @@ export default function ServiceView({ service, visible, registerRef }) {
         if (css) wv.insertCSS(css);
       } catch {}
     };
+    const onNavigate = (e) => {
+      // Persist last URL so the next app start opens where the user left off.
+      try {
+        if (e?.url && /^https?:\/\//.test(e.url)) {
+          localStorage.setItem(URL_KEY(service.id), e.url);
+        }
+      } catch {}
+      onDomReady();
+    };
     wv.addEventListener('did-start-loading', onStart);
     wv.addEventListener('did-stop-loading', onStop);
     wv.addEventListener('dom-ready', onDomReady);
-    wv.addEventListener('did-navigate', onDomReady);
-    wv.addEventListener('did-navigate-in-page', onDomReady);
+    wv.addEventListener('did-navigate', onNavigate);
+    wv.addEventListener('did-navigate-in-page', onNavigate);
     return () => {
       wv.removeEventListener('did-start-loading', onStart);
       wv.removeEventListener('did-stop-loading', onStop);
       wv.removeEventListener('dom-ready', onDomReady);
-      wv.removeEventListener('did-navigate', onDomReady);
-      wv.removeEventListener('did-navigate-in-page', onDomReady);
+      wv.removeEventListener('did-navigate', onNavigate);
+      wv.removeEventListener('did-navigate-in-page', onNavigate);
       registerRef?.(null);
     };
   }, [registerRef, service.id]);
@@ -91,7 +112,7 @@ export default function ServiceView({ service, visible, registerRef }) {
       )}
       <webview
         ref={ref}
-        src={service.url}
+        src={initialUrl}
         partition={service.partition}
         allowpopups="true"
         webpreferences="autoplayPolicy=document-user-activation-required"

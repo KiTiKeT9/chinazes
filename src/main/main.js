@@ -129,6 +129,13 @@ function suppressSecurityPrompts(ses) {
     if (['usb', 'serial', 'hid', 'bluetooth'].includes(perm)) return cb(false);
     cb(true);
   });
+  // Some Chromium permissions are checked synchronously (e.g. Notification.permission)
+  // and need a separate handler — without this, sites see "default" / "denied" and
+  // never even ask the user, so desktop notifications stay silent.
+  ses.setPermissionCheckHandler((_wc, perm) => {
+    if (['usb', 'serial', 'hid', 'bluetooth'].includes(perm)) return false;
+    return true;
+  });
   // Block WebUSB/HID device chooser that triggers the Windows security key dialog.
   ses.on('select-usb-device',       (e, _d, cb) => { e.preventDefault(); cb?.(); });
   ses.on('select-hid-device',       (e, _d, cb) => { e.preventDefault(); cb?.(); });
