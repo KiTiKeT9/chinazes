@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Download Xray core
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path resources/xray | Out-Null
+          $tmp = New-TemporaryFile
+          Invoke-WebRequest -Uri 'https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip' -OutFile "$tmp.zip" -UseBasicParsing
+          Expand-Archive -LiteralPath "$tmp.zip" -DestinationPath resources/xray -Force
+
+      - name: Download warp-plus
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path resources/warp-plus | Out-Null
+          $tmp = New-TemporaryFile
+          Invoke-WebRequest -Uri 'https://github.com/bepass-org/warp-plus/releases/latest/download/warp-plus_windows-amd64.zip' -OutFile "$tmp.zip" -UseBasicParsing
+          Expand-Archive -LiteralPath "$tmp.zip" -DestinationPath resources/warp-plus -Force
+          # warp-plus releases ship a top-level folder; flatten if needed
+          $nested = Get-ChildItem resources/warp-plus -Directory | Select-Object -First 1
+          if ($nested) { Move-Item "$($nested.FullName)/*" resources/warp-plus -Force; Remove-Item $nested.FullName -Recurse -Force }
+
+      - name: Ensure psiphon folder exists (placeholder)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path resources/psiphon | Out-Null
+          New-Item -ItemType File -Force -Path resources/psiphon/.gitkeep | Out-Null
+
+      - name: Build renderer
+        run: npm run build
+
+      - name: Package & publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --win --publish always
