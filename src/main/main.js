@@ -1,4 +1,9 @@
-const { app, BrowserWindow, ipcMain, session } = require('electron');
+const { app, BrowserWindow, ipcMain, session, protocol, nativeTheme } = require('electron');
+
+// Custom protocol for serving user notes (must be registered before app ready).
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'chinazes-note', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, bypassCSP: true } },
+]);
 
 // Disable Chromium features that trigger Windows Hello / security-key UI on page load.
 // Sites probing `navigator.credentials.get()` would otherwise pop the system dialog.
@@ -18,6 +23,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 const proxyManager = require('./proxy-manager');
 const updater = require('./updater');
+const notes = require('./notes');
+const netMonitor = require('./net-monitor');
 
 let mainWindow;
 
@@ -42,6 +49,7 @@ const SERVICE_PARTITIONS = [
   'persist:tiktok',
   'persist:steam',
   'persist:google',
+  'persist:gmail',
 ];
 
 function createWindow() {
@@ -61,6 +69,9 @@ function createWindow() {
       sandbox: false,
     },
   });
+
+  // Open maximized by default — feels more like a full app and gives webviews room.
+  mainWindow.maximize();
 
   if (process.env.NODE_ENV === 'development') {
     mainWindow.loadURL('http://127.0.0.1:5173');
@@ -125,6 +136,10 @@ function suppressSecurityPrompts(ses) {
 }
 
 app.whenReady().then(async () => {
+  // Force dark color-scheme so embedded sites that respect prefers-color-scheme
+  // (Gmail, Discord web, YouTube etc.) render in dark by default.
+  try { nativeTheme.themeSource = 'dark'; } catch {}
+
   // Default session
   suppressSecurityPrompts(session.defaultSession);
 
@@ -133,6 +148,9 @@ app.whenReady().then(async () => {
     const ses = session.fromPartition(partition);
     suppressSecurityPrompts(ses);
   }
+
+  notes.init();
+  notes.register();
 
   proxyManager.init({
     userDataDir: app.getPath('userData'),
@@ -150,6 +168,13 @@ app.whenReady().then(async () => {
   createWindow();
 
   updater.init({ window: mainWindow, logger: console });
+
+  // Network speed monitor — emits {rxBps, txBps} every ~1s.
+  netMonitor.start((sample) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('net:stats', sample);
+    }
+  }, console);
 });
 
 app.on('window-all-closed', async () => {
@@ -162,11 +187,21 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', async () => {
+  netMonitor.stop();
   await proxyManager.stop().catch(() => {});
 });
 
 // --------- IPC: app meta ----------
 ipcMain.handle('app:get-version', () => app.getVersion());
+
+// Apply a User-Agent to every service partition. Empty string -> reset to Electron default.
+ipcMain.handle('app:set-user-agent', (_e, ua) => {
+  for (const partition of SERVICE_PARTITIONS) {
+    const ses = session.fromPartition(partition);
+    try { ses.setUserAgent(ua || ''); } catch {}
+  }
+  return true;
+});
 
 // --------- IPC: window controls ----------
 ipcMain.on('window:minimize', () => mainWindow?.minimize());
@@ -186,14 +221,18 @@ ipcMain.handle('proxy:import-link', async (_e, input) => {
 ipcMain.handle('proxy:refresh-subscription', async () => {
   return proxyManager.refreshSubscription();
 });
+ipcMain.handle('proxy:probe-servers', async (_e, opts) => {
+  return proxyManager.probeServers(opts || {});
+});
+ipcMain.handle('proxy:clear-xray', async () => {
+  return proxyManager.clearXrayConfig();
+});
 ipcMain.handle('proxy:select-server', async (_e, index) => {
   return proxyManager.selectServer(index);
 });
 ipcMain.handle('proxy:set-engine', async (_e, engineId) => {
   return proxyManager.setEngine(engineId);
 });
-ipcMain.handle('proxy:zapret-list-strategies', () => proxyManager.listZapretStrategies());
-ipcMain.handle('proxy:zapret-set-strategy', (_e, name) => proxyManager.setZapretStrategy(name));
 ipcMain.handle('proxy:connect', async () => {
   await proxyManager.start();
   await applyProxyToAllServiceSessions();

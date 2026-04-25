@@ -6,7 +6,7 @@ import React from 'react';
 export function TelegramIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" {...props}>
-      <path d="M9.78 15.27 9.6 18.9c.26 0 .37-.11.51-.24l1.23-1.17 2.55 1.87c.47.26.8.12.93-.43l1.68-7.87c.15-.69-.25-.96-.71-.79L4.7 13.62c-.68.27-.67.65-.12.82l2.67.83 6.2-3.91c.29-.19.56-.08.34.12l-5 4.49Z" />
+      <path d="M21.94 4.66c.29-1.34-.49-1.86-1.39-1.52L2.69 9.99c-1.23.48-1.21 1.17-.21 1.48l4.61 1.44 1.78 5.36c.18.49.34.67.71.67.27 0 .39-.12.55-.27l2.21-2.13 4.6 3.4c.84.47 1.45.23 1.66-.78l3.34-15.5zm-7.84 7.13L7.6 17.21l-.36-2.84 9.32-8.42c.41-.36-.09-.55-.62-.2L4.45 13.16l-2.04-.64L19.7 5.61l-5.6 6.18z" />
     </svg>
   );
 }
@@ -54,6 +54,18 @@ export function GoogleIcon(props) {
   );
 }
 
+export function GmailIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" {...props}>
+      <path fill="#4285F4" d="M22 7.4v10.1a2 2 0 0 1-2 2h-2.4V11l-5.6 4.1L6.4 11v8.5H4a2 2 0 0 1-2-2V7.4l1.6-1.2L12 12.4l8.4-6.2L22 7.4Z"/>
+      <path fill="#34A853" d="M22 7.4V5.5A1.5 1.5 0 0 0 19.7 4.3L17.6 5.8v5.2L22 7.4Z"/>
+      <path fill="#FBBC04" d="M2 7.4V5.5A1.5 1.5 0 0 1 4.3 4.3L6.4 5.8v5.2L2 7.4Z"/>
+      <path fill="#EA4335" d="M6.4 5.8 12 9.9l5.6-4.1V11l-5.6 4.1L6.4 11V5.8Z"/>
+      <path fill="#C5221F" d="M6.4 5.8 12 9.9l5.6-4.1.1-.1V4.3a.5.5 0 0 0-.8-.4L12 7 7.1 3.9a.5.5 0 0 0-.8.4v1.4l.1.1Z"/>
+    </svg>
+  );
+}
+
 export function ReloadIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -74,6 +86,17 @@ export function SettingsIcon(props) {
   );
 }
 
+export function NotesIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M14 3v6h6" />
+      <path d="M9 13h6" />
+      <path d="M9 17h4" />
+    </svg>
+  );
+}
+
 export function ShieldIcon(props) {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -90,6 +113,7 @@ export function BrandIcon({ id, ...props }) {
     case 'tiktok':   return <TiktokIcon {...props} />;
     case 'steam':    return <SteamIcon {...props} />;
     case 'google':   return <GoogleIcon {...props} />;
+    case 'gmail':    return <GmailIcon {...props} />;
     default:         return null;
   }
 }

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { BrandIcon, SettingsIcon, ShieldIcon } from './Icons.jsx';
+import { BrandIcon, SettingsIcon, ShieldIcon, NotesIcon } from './Icons.jsx';
 
 function SidebarAvatar() {
   const [ok, setOk] = useState(true);
@@ -26,7 +26,7 @@ function SidebarAvatar() {
   );
 }
 
-function ServiceTab({ svc, isActive, onSelect, dragging, setDragging }) {
+function ServiceTab({ svc, isActive, isSecondary, onSelect, dragging, setDragging }) {
   const downAt = useRef(0);
   const moved = useRef(false);
 
@@ -41,15 +41,19 @@ function ServiceTab({ svc, isActive, onSelect, dragging, setDragging }) {
       transition={{ type: 'spring', stiffness: 500, damping: 36 }}
     >
       <button
-        className={`tab ${isActive ? 'tab--active' : ''} ${dragging ? 'tab--dragging' : ''}`}
+        className={`tab ${isActive ? 'tab--active' : ''} ${isSecondary ? 'tab--secondary' : ''} ${dragging ? 'tab--dragging' : ''}`}
         onPointerDown={() => { downAt.current = Date.now(); moved.current = false; }}
         onClick={(e) => {
-          // Suppress click if it was actually a drag.
           if (moved.current && Date.now() - downAt.current > 120) return;
-          onSelect(svc.id);
+          onSelect(svc.id, { split: e.shiftKey || e.altKey });
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          onSelect(svc.id, { split: true });
         }}
         style={{ '--accent': svc.accent }}
         aria-label={svc.name}
+        title={`${svc.name} — Shift+click для split-screen`}
       >
         <AnimatePresence>
           {isActive && (
@@ -85,8 +89,10 @@ export default function Sidebar({
   order,
   onReorder,
   active,
+  secondary,
   onSelect,
   onOpenSettings,
+  onOpenNotes,
   proxyStatus,
 }) {
   const [dragging, setDragging] = useState(false);
@@ -109,6 +115,7 @@ export default function Sidebar({
             key={svc.id}
             svc={svc}
             isActive={active === svc.id}
+            isSecondary={secondary === svc.id}
             onSelect={onSelect}
             dragging={dragging}
             setDragging={setDragging}
@@ -117,6 +124,14 @@ export default function Sidebar({
       </Reorder.Group>
 
       <div className="sidebar__bottom">
+        <button
+          className="tab tab--bottom"
+          onClick={onOpenNotes}
+          aria-label="Notes"
+          title="Заметки"
+        >
+          <NotesIcon />
+        </button>
         <button
           className={`tab tab--bottom proxy-pill proxy-pill--${proxyStatus}`}
           title={`Proxy: ${proxyStatus}`}

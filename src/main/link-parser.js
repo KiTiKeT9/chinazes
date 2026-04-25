@@ -337,6 +337,22 @@ function parseShareLink(link) {
 
 // ---------- Subscription fetcher ----------
 
+// Build a list of mirror URLs for a given subscription URL.
+// GitHub raw is often blocked/throttled in some regions; jsdelivr CDN and
+// statically.io usually work as fallbacks.
+function buildMirrors(url) {
+  const mirrors = [url];
+  // raw.githubusercontent.com/<user>/<repo>/<branch>/<path>
+  const m = url.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
+  if (m) {
+    const [, user, repo, branch, file] = m;
+    mirrors.push(`https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${file}`);
+    mirrors.push(`https://cdn.statically.io/gh/${user}/${repo}/${branch}/${file}`);
+    mirrors.push(`https://raw.fastgit.org/${user}/${repo}/${branch}/${file}`);
+  }
+  return mirrors;
+}
+
 async function fetchSubscription(url) {
   // Accepts a https?:// URL; follows redirects; body may be:
   //   - base64(plain text list of share links, one per line)
@@ -344,23 +360,32 @@ async function fetchSubscription(url) {
   //   - single share link
   //
   // Many panels check User-Agent; mimic v2rayN which is whitelisted widely.
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: {
-        'User-Agent': 'v2rayN/6.31',
-        'Accept': 'text/plain, */*',
-      },
-      redirect: 'follow',
-    });
-  } catch (e) {
+  // Tries primary URL plus mirrors (jsdelivr/statically/fastgit) on failure.
+  const urls = buildMirrors(url);
+  let res = null;
+  let lastErr = null;
+  for (const u of urls) {
+    try {
+      const r = await fetch(u, {
+        headers: {
+          'User-Agent': 'v2rayN/6.31',
+          'Accept': 'text/plain, */*',
+        },
+        redirect: 'follow',
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (r.ok) { res = r; break; }
+      lastErr = new Error(`HTTP ${r.status} ${r.statusText}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!res) {
     throw new Error(
-      `Cannot reach subscription URL: ${e.message}.\n` +
+      `Cannot reach subscription URL (tried ${urls.length} mirrors).\n` +
+      `Last error: ${lastErr?.message || 'unknown'}\n` +
       `Tip: if the URL is like "https://server.example.com/" with no path — it is probably the VPN server itself, not a subscription. You need the raw vless://... link from your provider.`
     );
-  }
-  if (!res.ok) {
-    throw new Error(`Subscription fetch failed: HTTP ${res.status} ${res.statusText}`);
   }
   const body = (await res.text()).trim();
 

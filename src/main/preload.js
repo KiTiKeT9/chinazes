@@ -2,7 +2,15 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('chinazes', {
   app: {
-    getVersion: () => ipcRenderer.invoke('app:get-version'),
+    getVersion:    () => ipcRenderer.invoke('app:get-version'),
+    setUserAgent:  (ua) => ipcRenderer.invoke('app:set-user-agent', ua),
+  },
+  net: {
+    onStats: (callback) => {
+      const listener = (_e, stats) => callback(stats);
+      ipcRenderer.on('net:stats', listener);
+      return () => ipcRenderer.removeListener('net:stats', listener);
+    },
   },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
@@ -14,10 +22,10 @@ contextBridge.exposeInMainWorld('chinazes', {
     getConfig:      () => ipcRenderer.invoke('proxy:get-config'),
     importLink:     (input) => ipcRenderer.invoke('proxy:import-link', input),
     refreshSubscription: () => ipcRenderer.invoke('proxy:refresh-subscription'),
+    probeServers:        (opts) => ipcRenderer.invoke('proxy:probe-servers', opts),
+    clearXray:           () => ipcRenderer.invoke('proxy:clear-xray'),
     selectServer:   (index) => ipcRenderer.invoke('proxy:select-server', index),
     setEngine:      (engineId) => ipcRenderer.invoke('proxy:set-engine', engineId),
-    listZapretStrategies: () => ipcRenderer.invoke('proxy:zapret-list-strategies'),
-    setZapretStrategy: (name) => ipcRenderer.invoke('proxy:zapret-set-strategy', name),
     connect:        () => ipcRenderer.invoke('proxy:connect'),
     disconnect:     () => ipcRenderer.invoke('proxy:disconnect'),
     onState: (callback) => {
@@ -25,6 +33,13 @@ contextBridge.exposeInMainWorld('chinazes', {
       ipcRenderer.on('proxy:state', listener);
       return () => ipcRenderer.removeListener('proxy:state', listener);
     },
+  },
+  notes: {
+    list:   ()        => ipcRenderer.invoke('notes:list'),
+    add:    (payload) => ipcRenderer.invoke('notes:add', payload),
+    remove: (id)      => ipcRenderer.invoke('notes:remove', id),
+    copy:   (id)      => ipcRenderer.invoke('notes:copy', id),
+    drag:   (id)      => ipcRenderer.invoke('notes:drag', id),
   },
   updater: {
     check:   () => ipcRenderer.invoke('updater:check'),

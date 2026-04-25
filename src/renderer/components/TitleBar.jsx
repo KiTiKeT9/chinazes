@@ -2,11 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ReloadIcon } from './Icons.jsx';
 
+function fmtBps(bps) {
+  if (!bps || bps < 1) return '0 B/s';
+  if (bps < 1024) return `${bps.toFixed(0)} B/s`;
+  if (bps < 1024 * 1024) return `${(bps / 1024).toFixed(1)} KB/s`;
+  if (bps < 1024 * 1024 * 1024) return `${(bps / 1024 / 1024).toFixed(2)} MB/s`;
+  return `${(bps / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
+}
+
 export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
   const api = window.chinazes?.window;
   const [version, setVersion] = useState('');
+  const [stats, setStats] = useState({ rxBps: 0, txBps: 0 });
   useEffect(() => {
     window.chinazes?.app?.getVersion?.().then(setVersion).catch(() => {});
+    const off = window.chinazes?.net?.onStats?.((s) => setStats(s));
+    return () => off?.();
   }, []);
 
   const statusLabel = {
@@ -27,6 +38,16 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
           <span className="dot" />
           {statusLabel}
           {serverName ? <em> · {serverName}</em> : null}
+        </span>
+      </div>
+      <div className="titlebar__netstats" title="Системный сетевой трафик">
+        <span className="netstats__line">
+          <span className="netstats__arrow netstats__arrow--down">↓</span>
+          <span className="netstats__val">{fmtBps(stats.rxBps)}</span>
+        </span>
+        <span className="netstats__line">
+          <span className="netstats__arrow netstats__arrow--up">↑</span>
+          <span className="netstats__val">{fmtBps(stats.txBps)}</span>
         </span>
       </div>
       <div className="titlebar__actions">

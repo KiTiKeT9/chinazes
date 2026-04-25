@@ -1,6 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 
+// Per-service CSS overrides injected into the webview after page load.
+// Used mainly to force a dark color scheme on services that ignore
+// `prefers-color-scheme: dark` (e.g. logged-out Gmail).
+const SERVICE_CSS = {
+  gmail: `
+    :root { color-scheme: dark !important; }
+    html, body { background: #0e0e10 !important; }
+    /* Login pages */
+    div[role="main"], .Bs, .nH, .aeI, .aDP, .ar4, .AO, .nv, .no { background: #0e0e10 !important; }
+    /* Inbox shell */
+    .gb_xd, .gb_Hd, .gb_Bd, .nH.bkK, .nH.aiw, .aiw, .nH.aeJ, .aeJ { background: #0e0e10 !important; }
+    /* Generic light surfaces */
+    [bgcolor="#ffffff"], [bgcolor="#FFFFFF"] { background-color: #161620 !important; }
+    /* Text contrast bumps */
+    body, .yW span, .y6 span, .y2 { color: #e6e8ff !important; }
+    .yW span { color: rgba(230,232,255,0.62) !important; }
+    /* Subject/preview text */
+    .bog, .y6, .ar9 { color: #e6e8ff !important; }
+    .y2 { color: rgba(230,232,255,0.55) !important; }
+    /* Cards / dialogs */
+    .Bu, .nv, .no, .Ar, .Am, .I5, .nH.if, .nH.bAw { background: #14141d !important; color: #e6e8ff !important; }
+    /* Inputs */
+    input, textarea, select { background: #1a1a25 !important; color: #e6e8ff !important; border-color: rgba(255,255,255,0.08) !important; }
+    /* Buttons */
+    .T-I.T-I-KE { background: #2a2c3d !important; color: #e6e8ff !important; box-shadow: none !important; }
+    /* Scrollbars */
+    ::-webkit-scrollbar { background: transparent; width: 10px; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 5px; }
+  `,
+};
+
 export default function ServiceView({ service, visible, registerRef }) {
   const ref = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -11,14 +42,27 @@ export default function ServiceView({ service, visible, registerRef }) {
     registerRef?.(wv);
     const onStart = () => setLoading(true);
     const onStop = () => setLoading(false);
+    const onDomReady = () => {
+      // Per-service custom CSS injection (e.g. Gmail dark mode).
+      try {
+        const css = SERVICE_CSS[service.id];
+        if (css) wv.insertCSS(css);
+      } catch {}
+    };
     wv.addEventListener('did-start-loading', onStart);
     wv.addEventListener('did-stop-loading', onStop);
+    wv.addEventListener('dom-ready', onDomReady);
+    wv.addEventListener('did-navigate', onDomReady);
+    wv.addEventListener('did-navigate-in-page', onDomReady);
     return () => {
       wv.removeEventListener('did-start-loading', onStart);
       wv.removeEventListener('did-stop-loading', onStop);
+      wv.removeEventListener('dom-ready', onDomReady);
+      wv.removeEventListener('did-navigate', onDomReady);
+      wv.removeEventListener('did-navigate-in-page', onDomReady);
       registerRef?.(null);
     };
-  }, [registerRef]);
+  }, [registerRef, service.id]);
 
   // Mute audio when this service is not visible (prevents TikTok/YouTube background autoplay).
   useEffect(() => {

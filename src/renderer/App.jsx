@@ -4,8 +4,11 @@ import TitleBar from './components/TitleBar.jsx';
 import ServiceView from './components/ServiceView.jsx';
 import TabbedServiceView from './components/TabbedServiceView.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
+import NotesPanel from './components/NotesPanel.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
 import { SERVICES } from './services.js';
+import { applyTheme, getStoredTheme } from './themes.js';
+import { UA_PRESETS, getStoredUA } from './user-agents.js';
 
 const ORDER_KEY = 'chinazes:sidebar-order';
 
@@ -26,7 +29,10 @@ function loadOrder() {
 export default function App() {
   const [order, setOrder] = useState(loadOrder);
   const [active, setActive] = useState(() => loadOrder()[0]);
+  const [secondary, setSecondary] = useState(null); // service id for split-screen right pane
+  const [splitRatio, setSplitRatio] = useState(0.5);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [proxyState, setProxyState] = useState({
     status: 'disconnected',
     message: '',
@@ -34,8 +40,16 @@ export default function App() {
     socksPort: 10808,
   });
 
-  // Refs to webviews keyed by service id so TitleBar reload can trigger them.
   const webviewRefs = useRef({});
+  const dragRef = useRef(null);
+
+  useEffect(() => {
+    applyTheme(getStoredTheme());
+    // Apply stored UA preset on app start (before webviews load).
+    const stored = getStoredUA();
+    const preset = UA_PRESETS.find((p) => p.id === stored) || UA_PRESETS[0];
+    window.chinazes?.app?.setUserAgent?.(preset.ua || '');
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(ORDER_KEY, JSON.stringify(order));
@@ -56,12 +70,53 @@ export default function App() {
     () => SERVICES.find((s) => s.id === active) || orderedServices[0],
     [active, orderedServices]
   );
+  const secondarySvc = useMemo(
+    () => (secondary ? SERVICES.find((s) => s.id === secondary) : null),
+    [secondary]
+  );
 
   const reloadActive = useCallback(() => {
     const wv = webviewRefs.current[active];
     if (!wv) return;
     try { wv.reload(); } catch {}
   }, [active]);
+
+  const onSelectService = useCallback((id, opts = {}) => {
+    if (opts.split) {
+      // Toggle as secondary; if same as active, ignore; if same as current secondary, close.
+      if (id === active) return;
+      setSecondary((cur) => (cur === id ? null : id));
+    } else {
+      // If clicked id is currently secondary, swap them.
+      if (id === secondary) {
+        setSecondary(active);
+        setActive(id);
+      } else {
+        setActive(id);
+      }
+    }
+  }, [active, secondary]);
+
+  const closeSecondary = useCallback(() => setSecondary(null), []);
+
+  // Drag-to-resize divider
+  const onDividerMouseDown = useCallback((e) => {
+    e.preventDefault();
+    const container = dragRef.current;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev) => {
+      const x = ev.clientX - rect.left;
+      const ratio = Math.min(0.85, Math.max(0.15, x / rect.width));
+      setSplitRatio(ratio);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
 
   return (
     <div
@@ -70,7 +125,7 @@ export default function App() {
     >
       <div className="app__glow" />
       <TitleBar
-        title={activeSvc.name}
+        title={secondarySvc ? `${activeSvc.name} ⏐ ${secondarySvc.name}` : activeSvc.name}
         proxyStatus={proxyState.status}
         serverName={proxyState.server?.name}
         onReload={reloadActive}
@@ -81,22 +136,59 @@ export default function App() {
           order={order}
           onReorder={setOrder}
           active={active}
-          onSelect={setActive}
+          secondary={secondary}
+          onSelect={onSelectService}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenNotes={() => setNotesOpen(true)}
           proxyStatus={proxyState.status}
         />
-        <main className="app__content">
-          {SERVICES.map((svc) => {
-            const View = svc.tabbed ? TabbedServiceView : ServiceView;
-            return (
-              <View
-                key={svc.id}
-                service={svc}
-                visible={svc.id === active}
-                registerRef={(el) => { webviewRefs.current[svc.id] = el; }}
+        <main className={`app__content ${secondarySvc ? 'app__content--split' : ''}`} ref={dragRef}>
+          <div
+            className="pane pane--primary"
+            style={secondarySvc ? { flex: `0 0 calc(${splitRatio * 100}% - 4px)` } : undefined}
+          >
+            {SERVICES.map((svc) => {
+              const View = svc.tabbed ? TabbedServiceView : ServiceView;
+              return (
+                <View
+                  key={svc.id}
+                  service={svc}
+                  visible={svc.id === active}
+                  registerRef={(el) => { webviewRefs.current[svc.id] = el; }}
+                />
+              );
+            })}
+          </div>
+          {secondarySvc && (
+            <>
+              <div
+                className="pane-divider"
+                onMouseDown={onDividerMouseDown}
+                aria-label="Resize panes"
+                title="Drag to resize"
               />
-            );
-          })}
+              <div className="pane pane--secondary">
+                <div className="pane__header">
+                  <span className="pane__name">{secondarySvc.name}</span>
+                  <button className="pane__close" onClick={closeSecondary} aria-label="Close pane">×</button>
+                </div>
+                <div className="pane__body">
+                  {SERVICES.map((svc) => {
+                    if (svc.id !== secondary) return null;
+                    const View = svc.tabbed ? TabbedServiceView : ServiceView;
+                    return (
+                      <View
+                        key={`sec-${svc.id}`}
+                        service={{ ...svc, partition: `${svc.partition}` }}
+                        visible
+                        registerRef={(el) => { webviewRefs.current[`sec-${svc.id}`] = el; }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </main>
       </div>
       <SettingsModal
@@ -104,6 +196,7 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         proxyState={proxyState}
       />
+      <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
       <UpdateToast />
     </div>
   );

@@ -58,4 +58,13 @@ export const SERVICES = [
     icon: 'google',
     tabbed: true,
   },
+  {
+    id: 'gmail',
+    name: 'Gmail',
+    url: 'https://mail.google.com/mail/u/0/',
+    partition: 'persist:gmail',
+    accent: '#EA4335',
+    gradient: 'linear-gradient(135deg, #4285F4 0%, #EA4335 100%)',
+    icon: 'gmail',
+  },
 ];

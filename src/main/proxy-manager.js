@@ -1,8 +1,9 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const net = require('node:net');
 const { XrayEngine } = require('./engines/xray');
 const { WarpEngine } = require('./engines/warp');
-const { ZapretEngine } = require('./engines/zapret');
+const { PsiphonEngine } = require('./engines/psiphon');
 const { parseShareLink, fetchSubscription, isSubscriptionUrl } = require('./link-parser');
 
 let ctx = {
@@ -14,13 +15,13 @@ let ctx = {
 let state = {
   status: 'disconnected', // disconnected | starting | connected | error
   message: '',
-  engine: 'xray',         // xray | warp | zapret
+  engine: 'xray',         // xray | warp | psiphon
   server: null,           // meta of active server (xray only)
   socksPort: null,
-  scope: 'app',           // 'app' or 'system' (zapret)
+  scope: 'app',
 };
 
-let engines = { xray: null, warp: null, zapret: null };
+let engines = { xray: null, warp: null, psiphon: null };
 let activeEngine = null;
 let activeProxyRules = '';
 
@@ -38,7 +39,7 @@ function getStoredConfig() {
       engine: 'xray',
       xray: { link: '', subscription: '', servers: [], selectedIndex: 0, meta: null },
       warp: {},
-      zapret: {},
+      psiphon: {},
     };
   }
 }
@@ -65,26 +66,15 @@ function init(options) {
     resourcesDir: ctx.resourcesDir,
   });
   engines.warp = new WarpEngine({});
-  engines.zapret = new ZapretEngine({ resourcesDir: ctx.resourcesDir });
+  engines.psiphon = new PsiphonEngine({
+    resourcesDir: ctx.resourcesDir,
+    userDataDir: ctx.userDataDir,
+  });
 
   const stored = getStoredConfig();
-  setState({ engine: stored.engine || 'xray' });
-  // Restore zapret strategy preference
-  if (stored.zapret?.strategy && engines.zapret?.setStrategy) {
-    engines.zapret.setStrategy(stored.zapret.strategy);
-  }
-}
-
-function listZapretStrategies() {
-  return engines.zapret?.listStrategies?.() || [];
-}
-
-function setZapretStrategy(name) {
-  const cfg = getStoredConfig();
-  cfg.zapret = { ...(cfg.zapret || {}), strategy: name };
-  saveStoredConfig(cfg);
-  engines.zapret?.setStrategy?.(name);
-  return name;
+  // If older config has engine='zapret' (now removed), fall back to xray.
+  const engine = ['xray', 'warp', 'psiphon'].includes(stored.engine) ? stored.engine : 'xray';
+  setState({ engine });
 }
 
 // ---------- Link / subscription flow ----------
@@ -165,8 +155,15 @@ function selectServer(index) {
   return cfg.xray;
 }
 
+function clearXrayConfig() {
+  const cfg = getStoredConfig();
+  cfg.xray = { link: '', subscription: '', servers: [], selectedIndex: 0, meta: null };
+  saveStoredConfig(cfg);
+  return cfg.xray;
+}
+
 function setEngine(engine) {
-  if (!['xray', 'warp', 'zapret'].includes(engine)) throw new Error('Unknown engine');
+  if (!['xray', 'warp', 'psiphon'].includes(engine)) throw new Error('Unknown engine');
   const cfg = getStoredConfig();
   cfg.engine = engine;
   saveStoredConfig(cfg);
@@ -210,15 +207,15 @@ async function start() {
         socksPort: result.socksPort,
         message: '',
       });
-    } else if (engineId === 'zapret') {
+    } else if (engineId === 'psiphon') {
       result = await engine.start();
       setState({
         status: 'connected',
-        engine: 'zapret',
-        scope: 'system',
-        server: { name: 'Zapret DPI bypass', protocol: 'zapret' },
-        socksPort: null,
-        message: 'System-wide. Other apps are affected.',
+        engine: 'psiphon',
+        scope: 'app',
+        server: { name: 'Psiphon tunnel', protocol: 'psiphon' },
+        socksPort: 1099,
+        message: 'Psiphon — auto-discovered tunnel, app-scoped',
       });
     }
 
@@ -241,6 +238,53 @@ async function stop() {
 
 // ---------- Electron session glue ----------
 
+// TCP probe: connect to host:port with timeout, return latency in ms or null.
+function probeServer(host, port, timeoutMs = 3000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const socket = new net.Socket();
+    let done = false;
+    const finish = (latency) => {
+      if (done) return;
+      done = true;
+      try { socket.destroy(); } catch {}
+      resolve(latency);
+    };
+    socket.setTimeout(timeoutMs);
+    socket.once('connect', () => finish(Date.now() - start));
+    socket.once('timeout', () => finish(null));
+    socket.once('error',   () => finish(null));
+    try { socket.connect(port, host); } catch { finish(null); }
+  });
+}
+
+// Probe servers in parallel batches. Returns array indexed by `servers` (null = unreachable / skipped).
+// If `indices` is provided, only those positions are tested; others stay null.
+async function probeServers({ concurrency = 20, timeoutMs = 3000, indices = null } = {}) {
+  const cfg = getStoredConfig();
+  const servers = cfg.xray?.servers || [];
+  if (!servers.length) return [];
+
+  const targets = indices && indices.length ? indices : servers.map((_, i) => i);
+  const results = new Array(servers.length).fill(null);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < targets.length) {
+      const i = targets[cursor++];
+      const meta = servers[i]?.meta || {};
+      const host = meta.address || meta.host;
+      const port = Number(meta.port);
+      if (!host || !port) continue;
+      results[i] = await probeServer(host, port, timeoutMs);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, targets.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
+
 async function applyToSession(ses) {
   if (!ses) return;
   if (activeProxyRules) {
@@ -256,10 +300,10 @@ module.exports = {
   getStoredConfig,
   importLink,
   refreshSubscription,
+  probeServers,
+  clearXrayConfig,
   selectServer,
   setEngine,
-  listZapretStrategies,
-  setZapretStrategy,
   start,
   stop,
   applyToSession,

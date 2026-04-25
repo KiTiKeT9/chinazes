@@ -15,9 +15,12 @@ xray-config.json
 build/icon.ico
 src/renderer/public/avatar.png
 public/avatar.png
+resources/psiphon/*.exe
+resources/psiphon/psiphon-tunnel-core-master/
+resources/zapret/
+psi.zip
+*.zip
 resources/xray/xray.exe
 resources/xray/xray
 resources/xray/geoip.dat
 resources/xray/geosite.dat
-resources/zapret/*
-!resources/zapret/README.md
