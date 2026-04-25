@@ -425,12 +425,16 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .modal {
   width: 620px;
   max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px);
   background: linear-gradient(180deg, var(--bg-2) 0%, var(--bg) 100%);
   border: 1px solid var(--border);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0,0,0,0.6);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
+.modal__header { flex: 0 0 auto; }
 .modal__header {
   display: flex;
   align-items: center;
@@ -450,7 +454,10 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   color: var(--fg-dim); font-size: 20px; line-height: 1;
 }
 .modal__close:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
-.modal__body { padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.modal__body { padding: 18px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.modal__body::-webkit-scrollbar { width: 10px; }
+.modal__body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 5px; }
+.modal__body::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
 .modal__hint { margin: 0; color: var(--fg-dim); line-height: 1.55; }
 .modal__hint code { background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 5px; }
 
