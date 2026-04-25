@@ -14,6 +14,7 @@ xray-config.json
 # Local icon (binary) — kept out of repo by default; remove if you want to commit it
 build/icon.ico
 src/renderer/public/avatar.png
+public/avatar.png
 resources/xray/xray.exe
 resources/xray/xray
 resources/xray/geoip.dat

@@ -17,6 +17,20 @@ class ZapretEngine {
     this.logger = logger || console;
     this.process = null;
     this.id = 'zapret';
+    this.strategy = 'builtin';
+  }
+
+  setStrategy(name) {
+    this.strategy = name || 'builtin';
+  }
+
+  // List available .txt strategies in resources/zapret/bat/.
+  listStrategies() {
+    const dir = path.join(this.root, 'bat');
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir)
+      .filter((f) => /\.txt$/i.test(f))
+      .sort((a, b) => a.localeCompare(b));
   }
 
   get root() {
@@ -86,41 +100,51 @@ class ZapretEngine {
   }
 
   // Default arg set. Strategy preference order:
-  //   1. resources/zapret/args.txt           (raw user-supplied flags)
-  //   2. resources/zapret/bat/<strategy>.txt (Zapret2 GUI strategy file, parsed)
-  //   3. inline fallback flags
+  //   1. resources/zapret/args.txt                (raw user-supplied flags)
+  //   2. resources/zapret/bat/<file>.txt          (Zapret2 GUI strategy, parsed) — opt-in via STRATEGY env var
+  //   3. inline minimal "general" strategy        (default, known-good)
   defaultArgs() {
     const argsFile = path.join(this.root, 'args.txt');
     if (fs.existsSync(argsFile)) {
       const raw = fs.readFileSync(argsFile, 'utf8').trim();
       return raw.split(/\s+/).filter(Boolean);
     }
-    const batDir = path.join(this.root, 'bat');
-    if (fs.existsSync(batDir)) {
-      const preferred = [
-        'general_alt11_191_allsites.txt',
-        'alt_general_faketlsauto_allsites.txt',
-        'YTDisBystro_34_1.txt',
-      ];
-      for (const name of preferred) {
-        const full = path.join(batDir, name);
-        if (fs.existsSync(full)) {
-          try {
-            const parsed = this.parseStrategyFile(full);
-            if (parsed.length) return parsed;
-          } catch (e) {
-            this.logger.error('[zapret] strategy parse failed', name, e?.message);
-          }
+
+    // Pick a Zapret2 .txt strategy by name via instance prop or env var.
+    const stratName = this.strategy || process.env.CHINAZES_ZAPRET_STRATEGY;
+    if (stratName && stratName !== 'builtin') {
+      const full = path.join(this.root, 'bat', stratName);
+      if (fs.existsSync(full)) {
+        try {
+          const parsed = this.parseStrategyFile(full);
+          if (parsed.length) return parsed;
+        } catch (e) {
+          this.logger.error('[zapret] strategy parse failed', stratName, e?.message);
         }
+      } else {
+        this.logger.error('[zapret] strategy not found:', stratName);
       }
     }
+
+    // Inline minimal strategy: works for YouTube/Discord/general HTTPS DPI bypass.
+    // Uses fake+split with md5sig fooling — robust on most RU ISPs.
     return [
       '--wf-tcp=80,443',
-      '--wf-udp=443,50000-50100',
-      '--filter-tcp=443',
-      '--dpi-desync=fake,split2',
-      '--dpi-desync-ttl=5',
+      '--wf-udp=443,50000-65535',
+      '--filter-tcp=80,443',
+      '--dpi-desync=fake,multisplit',
+      '--dpi-desync-split-pos=1',
       '--dpi-desync-fooling=md5sig',
+      '--dpi-desync-repeats=6',
+      '--new',
+      '--filter-udp=443',
+      '--dpi-desync=fake',
+      '--dpi-desync-repeats=6',
+      '--new',
+      '--filter-udp=50000-65535',
+      '--filter-l7=discord,stun',
+      '--dpi-desync=fake',
+      '--dpi-desync-repeats=6',
     ];
   }
 
@@ -144,6 +168,34 @@ class ZapretEngine {
     }
   }
 
+  // Copy lists/* into bin/ so winws (running with cwd=bin) can resolve
+  // both .bin payloads AND hostlist/ipset txt files referenced by strategies.
+  syncListsToBin() {
+    const binDir = path.join(this.root, 'bin');
+    const listsDir = path.join(this.root, 'lists');
+    if (!fs.existsSync(binDir) || !fs.existsSync(listsDir)) return;
+    try {
+      const files = fs.readdirSync(listsDir);
+      for (const name of files) {
+        const src = path.join(listsDir, name);
+        const dst = path.join(binDir, name);
+        if (!fs.existsSync(dst)) {
+          try { fs.copyFileSync(src, dst); } catch { /* skip */ }
+        }
+        // Strategies reference both `<name>.txt` and `list-<name>.txt`.
+        // Create the alias if only one variant exists.
+        if (/^[^.][^-]/.test(name) && !name.startsWith('list-') && !name.startsWith('ipset-')) {
+          const alias = path.join(binDir, `list-${name}`);
+          if (!fs.existsSync(alias)) {
+            try { fs.copyFileSync(src, alias); } catch { /* skip */ }
+          }
+        }
+      }
+    } catch (e) {
+      this.logger.error('[zapret] syncListsToBin failed:', e?.message);
+    }
+  }
+
   async start() {
     if (this.isRunning()) return { proxyRules: '' };
     await this.checkAvailable();
@@ -155,6 +207,9 @@ class ZapretEngine {
     // by bare filename. Those live in resources/zapret/bin/. Set cwd there so they resolve.
     const binDir = path.join(this.root, 'bin');
     const cwd = fs.existsSync(binDir) ? binDir : path.dirname(bin);
+
+    // Copy hostlists/ipsets next to .bin payloads so winws finds them with cwd=bin/.
+    this.syncListsToBin();
 
     this.logger.log('[zapret] spawn', bin, 'cwd=', cwd, 'args=', args.join(' '));
 

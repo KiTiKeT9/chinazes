@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldIcon } from './Icons.jsx';
+import StrategyPicker from './StrategyPicker.jsx';
 
 const ENGINES = [
   { id: 'xray',   name: 'Xray / v2ray', desc: 'VLESS, VMess, Trojan, Shadowsocks, Hysteria2 + подписки' },
@@ -14,6 +15,8 @@ export default function SettingsModal({ open, onClose, proxyState }) {
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [zapretStrategies, setZapretStrategies] = useState([]);
+  const [zapretStrategy, setZapretStrategyState] = useState('builtin');
 
   useEffect(() => {
     if (!open) return;
@@ -25,7 +28,18 @@ export default function SettingsModal({ open, onClose, proxyState }) {
     setConfig(cfg);
     setEngine(cfg.engine || 'xray');
     setLink(cfg.xray?.subscription || cfg.xray?.link || '');
+    setZapretStrategyState(cfg.zapret?.strategy || 'builtin');
     setError('');
+    try {
+      const list = await window.chinazes.proxy.listZapretStrategies();
+      setZapretStrategies(list || []);
+    } catch { /* ignore */ }
+  }
+
+  async function onPickStrategy(name) {
+    setZapretStrategyState(name);
+    try { await window.chinazes.proxy.setZapretStrategy(name); }
+    catch (e) { setError(String(e?.message || e)); }
   }
 
   async function onImport() {
@@ -198,17 +212,23 @@ export default function SettingsModal({ open, onClose, proxyState }) {
                 <div className="engine-panel">
                   <p className="modal__hint">
                     <b>Zapret</b> (bol-van/zapret2) — обход DPI через фрагментацию пакетов.
-                    Не VPN — не меняет IP. Работает <b>системно</b> (затрагивает весь ПК,
-                    но только трафик по фильтру, обычно 443 порт к списку замедленных доменов).
+                    Не VPN — не меняет IP. Работает <b>системно</b>.
+                    Запусти Chinazes <b>от имени администратора</b>.
                   </p>
-                  <ol className="steps">
-                    <li>Скачай Windows-релиз с <a href="https://github.com/bol-van/zapret2/releases" target="_blank" rel="noreferrer">github.com/bol-van/zapret2</a>.</li>
-                    <li>Распакуй в папку <code>resources/zapret/</code> рядом с приложением (нужен <code>winws.exe</code> + <code>WinDivert.dll/sys</code>).</li>
-                    <li>Запусти Chinazes <b>от имени администратора</b>, затем Connect.</li>
-                  </ol>
+
+                  <div className="field">
+                    <span className="field__label">Стратегия</span>
+                    <StrategyPicker
+                      value={zapretStrategy}
+                      options={zapretStrategies}
+                      onChange={onPickStrategy}
+                    />
+                  </div>
                   <p className="modal__hint muted">
-                    ⚠ Внимание: затрагивает трафик всего ПК. Другие приложения продолжат работать,
-                    но их HTTPS-соединения тоже проходят через DPI-обход.
+                    Built-in — встроенная универсальная стратегия (YouTube/Discord/HTTPS).
+                    Остальные — пресеты из <code>resources/zapret/bat/</code>; если built-in
+                    не справляется на твоём провайдере, попробуй разные.
+                    Изменение применяется при следующем Connect.
                   </p>
                 </div>
               )}

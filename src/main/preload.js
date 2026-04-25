@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('chinazes', {
+  app: {
+    getVersion: () => ipcRenderer.invoke('app:get-version'),
+  },
   window: {
     minimize: () => ipcRenderer.send('window:minimize'),
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
@@ -13,6 +16,8 @@ contextBridge.exposeInMainWorld('chinazes', {
     refreshSubscription: () => ipcRenderer.invoke('proxy:refresh-subscription'),
     selectServer:   (index) => ipcRenderer.invoke('proxy:select-server', index),
     setEngine:      (engineId) => ipcRenderer.invoke('proxy:set-engine', engineId),
+    listZapretStrategies: () => ipcRenderer.invoke('proxy:zapret-list-strategies'),
+    setZapretStrategy: (name) => ipcRenderer.invoke('proxy:zapret-set-strategy', name),
     connect:        () => ipcRenderer.invoke('proxy:connect'),
     disconnect:     () => ipcRenderer.invoke('proxy:disconnect'),
     onState: (callback) => {

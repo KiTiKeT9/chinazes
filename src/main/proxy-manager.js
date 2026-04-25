@@ -69,6 +69,22 @@ function init(options) {
 
   const stored = getStoredConfig();
   setState({ engine: stored.engine || 'xray' });
+  // Restore zapret strategy preference
+  if (stored.zapret?.strategy && engines.zapret?.setStrategy) {
+    engines.zapret.setStrategy(stored.zapret.strategy);
+  }
+}
+
+function listZapretStrategies() {
+  return engines.zapret?.listStrategies?.() || [];
+}
+
+function setZapretStrategy(name) {
+  const cfg = getStoredConfig();
+  cfg.zapret = { ...(cfg.zapret || {}), strategy: name };
+  saveStoredConfig(cfg);
+  engines.zapret?.setStrategy?.(name);
+  return name;
 }
 
 // ---------- Link / subscription flow ----------
@@ -242,6 +258,8 @@ module.exports = {
   refreshSubscription,
   selectServer,
   setEngine,
+  listZapretStrategies,
+  setZapretStrategy,
   start,
   stop,
   applyToSession,

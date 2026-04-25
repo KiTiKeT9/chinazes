@@ -1,9 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ReloadIcon } from './Icons.jsx';
 
 export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
   const api = window.chinazes?.window;
+  const [version, setVersion] = useState('');
+  useEffect(() => {
+    window.chinazes?.app?.getVersion?.().then(setVersion).catch(() => {});
+  }, []);
+
   const statusLabel = {
     connected: 'Proxy online',
     starting: 'Connecting…',
@@ -14,7 +19,10 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
   return (
     <div className="titlebar">
       <div className="titlebar__drag">
-        <span className="titlebar__title">{title}</span>
+        <span className="titlebar__title">
+          {title}
+          {version && <span className="titlebar__version">v{version}</span>}
+        </span>
         <span className={`titlebar__status titlebar__status--${proxyStatus}`}>
           <span className="dot" />
           {statusLabel}
