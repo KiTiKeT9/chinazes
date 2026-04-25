@@ -6,7 +6,9 @@ export default function NotesPanel({ open, onClose }) {
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
   const [hover, setHover] = useState(false);
+  const [lightbox, setLightbox] = useState(null); // { type, url } | null
   const fileInputRef = useRef(null);
+  const dragCounterRef = useRef(0);
 
   const reload = useCallback(async () => {
     try {
@@ -73,10 +75,30 @@ export default function NotesPanel({ open, onClose }) {
 
   async function onDrop(e) {
     e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
     setHover(false);
     const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
     for (const f of files) await uploadFile(f);
     reload();
+  }
+
+  // Track drag over the whole panel using counters (Firefox/Chromium fire
+  // dragenter/leave for child elements; counter avoids flicker).
+  function onPanelDragEnter(e) {
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    dragCounterRef.current += 1;
+    setHover(true);
+  }
+  function onPanelDragLeave() {
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setHover(false);
+  }
+  function onPanelDragOver(e) {
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
   }
 
   async function onAddText() {
@@ -104,8 +126,12 @@ export default function NotesPanel({ open, onClose }) {
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
         >
           <motion.aside
-            className="notes-panel"
+            className={`notes-panel ${hover ? 'notes-panel--drop-active' : ''}`}
             onClick={(e) => e.stopPropagation()}
+            onDragEnter={onPanelDragEnter}
+            onDragLeave={onPanelDragLeave}
+            onDragOver={onPanelDragOver}
+            onDrop={onDrop}
             initial={{ x: 480, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 480, opacity: 0 }}
@@ -116,13 +142,8 @@ export default function NotesPanel({ open, onClose }) {
               <button className="modal__close" onClick={onClose}>×</button>
             </header>
 
-            <div
-              className={`notes-drop ${hover ? 'notes-drop--hover' : ''}`}
-              onDragOver={(e) => { e.preventDefault(); setHover(true); }}
-              onDragLeave={() => setHover(false)}
-              onDrop={onDrop}
-            >
-              <p>Перетащи сюда фото/видео/гифку, или вставь из буфера (Ctrl+V).</p>
+            <div className="notes-drop">
+              <p>Перетащи сюда фото/видео/гифку (или в любое место панели), или вставь из буфера (Ctrl+V).</p>
               <button
                 className="btn btn--ghost"
                 onClick={() => fileInputRef.current?.click()}
@@ -162,17 +183,45 @@ export default function NotesPanel({ open, onClose }) {
                   onCopy={() => onCopy(n.id)}
                   onRemove={() => onRemove(n.id)}
                   onDragStart={() => onDragStart(n.id)}
+                  onZoom={() => {
+                    if (n.type === 'image' || n.type === 'gif' || n.type === 'video') {
+                      setLightbox({ type: n.type, url: n.fileUrl });
+                    }
+                  }}
                 />
               ))}
             </div>
           </motion.aside>
+
+          {lightbox && (
+            <motion.div
+              className="note-lightbox"
+              onClick={() => setLightbox(null)}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              {(lightbox.type === 'image' || lightbox.type === 'gif') && (
+                <img src={lightbox.url} alt="" onClick={(e) => e.stopPropagation()} />
+              )}
+              {lightbox.type === 'video' && (
+                <video
+                  src={lightbox.url}
+                  controls
+                  autoPlay
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
+              <button className="note-lightbox__close" onClick={() => setLightbox(null)}>×</button>
+            </motion.div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>
   );
 }
 
-function NoteCard({ note, onCopy, onRemove, onDragStart }) {
+function NoteCard({ note, onCopy, onRemove, onDragStart, onZoom }) {
   const isMedia = note.type === 'image' || note.type === 'gif' || note.type === 'video';
   return (
     <div
@@ -180,13 +229,13 @@ function NoteCard({ note, onCopy, onRemove, onDragStart }) {
       draggable={!!note.fileUrl}
       onDragStart={onDragStart}
     >
-      <div className="note-card__preview">
+      <div className="note-card__preview" onClick={isMedia ? onZoom : undefined}>
         {note.type === 'text' && <pre className="note-card__text">{note.text}</pre>}
         {(note.type === 'image' || note.type === 'gif') && (
           <img src={note.fileUrl} alt={note.label} />
         )}
         {note.type === 'video' && (
-          <video src={note.fileUrl} controls preload="metadata" />
+          <video src={note.fileUrl} preload="metadata" muted />
         )}
         {note.type === 'audio' && (
           <audio src={note.fileUrl} controls />

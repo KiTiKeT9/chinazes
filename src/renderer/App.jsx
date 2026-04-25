@@ -11,6 +11,12 @@ import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 
 const ORDER_KEY = 'chinazes:sidebar-order';
+const SPLIT_RATIO_KEY = 'chinazes:split-ratio';
+
+function loadSplitRatio() {
+  const v = parseFloat(localStorage.getItem(SPLIT_RATIO_KEY) || '0.5');
+  return Number.isFinite(v) && v > 0.1 && v < 0.9 ? v : 0.5;
+}
 
 function loadOrder() {
   try {
@@ -30,7 +36,8 @@ export default function App() {
   const [order, setOrder] = useState(loadOrder);
   const [active, setActive] = useState(() => loadOrder()[0]);
   const [secondary, setSecondary] = useState(null); // service id for split-screen right pane
-  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [splitRatio, setSplitRatio] = useState(loadSplitRatio);
+  const [resizing, setResizing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
   const [proxyState, setProxyState] = useState({
@@ -99,24 +106,30 @@ export default function App() {
 
   const closeSecondary = useCallback(() => setSecondary(null), []);
 
-  // Drag-to-resize divider
+  // Drag-to-resize divider. The transparent overlay (.resize-overlay below) intercepts
+  // pointer events while dragging so the embedded <webview> tags don't capture them
+  // (which is what was causing the slow / sticky drag).
   const onDividerMouseDown = useCallback((e) => {
     e.preventDefault();
     const container = dragRef.current;
     if (!container) return;
+    setResizing(true);
     const rect = container.getBoundingClientRect();
+    let lastRatio = splitRatio;
     const onMove = (ev) => {
       const x = ev.clientX - rect.left;
-      const ratio = Math.min(0.85, Math.max(0.15, x / rect.width));
-      setSplitRatio(ratio);
+      lastRatio = Math.min(0.85, Math.max(0.15, x / rect.width));
+      setSplitRatio(lastRatio);
     };
     const onUp = () => {
+      setResizing(false);
+      try { localStorage.setItem(SPLIT_RATIO_KEY, String(lastRatio)); } catch {}
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-  }, []);
+  }, [splitRatio]);
 
   return (
     <div
@@ -142,7 +155,8 @@ export default function App() {
           onOpenNotes={() => setNotesOpen(true)}
           proxyStatus={proxyState.status}
         />
-        <main className={`app__content ${secondarySvc ? 'app__content--split' : ''}`} ref={dragRef}>
+        <main className={`app__content ${secondarySvc ? 'app__content--split' : ''} ${resizing ? 'app__content--resizing' : ''}`} ref={dragRef}>
+          {resizing && <div className="resize-overlay" />}
           <div
             className="pane pane--primary"
             style={secondarySvc ? { flex: `0 0 calc(${splitRatio * 100}% - 4px)` } : undefined}

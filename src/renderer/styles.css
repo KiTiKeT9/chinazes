@@ -863,6 +863,19 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 }
 .pane-divider:hover::before { background: var(--accent); }
 
+/* Transparent overlay shown only while dragging the divider — it sits above the
+   webview tags and prevents them from swallowing pointer events, so the drag
+   feels instant instead of sticky. */
+.resize-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: col-resize;
+  background: transparent;
+}
+.app__content--resizing .pane,
+.app__content--resizing webview { pointer-events: none; }
+
 /* Secondary indicator on sidebar tab */
 .tab--secondary::after {
   content: '';
@@ -1053,7 +1066,63 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   padding: 6px 8px 6px 12px;
   gap: 8px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: rgba(0,0,0,0.25);
+  position: sticky;
+  bottom: 0;
 }
+.note-card__btns { display: flex; gap: 4px; flex-shrink: 0; }
+.note-card { display: flex; flex-direction: column; }
+.note-card__preview { flex: 1 1 auto; min-height: 0; }
+.note-card__preview img { cursor: zoom-in; }
+
+/* Lightbox for image/video preview on click */
+.note-lightbox {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+.note-lightbox img,
+.note-lightbox video {
+  max-width: 92vw;
+  max-height: 92vh;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  border-radius: 12px;
+}
+.note-lightbox__close {
+  position: absolute;
+  top: 18px; right: 18px;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.12);
+  color: #fff;
+  font-size: 22px; line-height: 1;
+  cursor: pointer;
+}
+.note-lightbox__close:hover { background: rgba(255,255,255,0.22); }
+
+/* Panel-wide drop overlay */
+.notes-panel--drop-active::after {
+  content: 'Отпусти — добавлю в заметки';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklab, var(--accent) 18%, rgba(0,0,0,0.55));
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  color: var(--fg);
+  font-size: 16px;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 10;
+}
+.notes-panel { position: relative; }
 .note-card__label {
   font-size: 11.5px;
   color: var(--fg-mute);

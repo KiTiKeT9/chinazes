@@ -1,6 +1,6 @@
 {
   "name": "chinazes",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "description": "Desktop hub for Telegram, Discord, YouTube and TikTok with built-in v2ray/Xray proxy (app-scoped, not system-wide).",
   "main": "src/main/main.js",
   "scripts": {

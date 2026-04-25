@@ -4,14 +4,45 @@ import { motion, AnimatePresence } from 'framer-motion';
 let tabSeq = 0;
 const nextTabId = () => `t${++tabSeq}`;
 
+const TABS_KEY = (id) => `chinazes:tabs:${id}`;
+
+function loadTabs(service) {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TABS_KEY(service.id)) || 'null');
+    if (raw && Array.isArray(raw.tabs) && raw.tabs.length) {
+      const tabs = raw.tabs
+        .filter((t) => t && typeof t.url === 'string' && /^https?:\/\//.test(t.url))
+        .map((t) => ({
+          id: nextTabId(),
+          url: t.url,
+          title: t.title || service.name,
+          favicon: t.favicon || null,
+        }));
+      if (tabs.length) {
+        const activeIdx = Math.max(0, Math.min(raw.activeIndex ?? 0, tabs.length - 1));
+        return { tabs, activeId: tabs[activeIdx].id };
+      }
+    }
+  } catch {}
+  const t = { id: nextTabId(), url: service.url, title: service.name, favicon: null };
+  return { tabs: [t], activeId: t.id };
+}
+
 export default function TabbedServiceView({ service, visible, registerRef }) {
-  const [tabs, setTabs] = useState(() => [{
-    id: nextTabId(),
-    url: service.url,
-    title: service.name,
-    favicon: null,
-  }]);
-  const [activeId, setActiveId] = useState(() => tabs[0].id);
+  const initial = useRef(loadTabs(service)).current;
+  const [tabs, setTabs] = useState(initial.tabs);
+  const [activeId, setActiveId] = useState(initial.activeId);
+
+  // Persist tabs (urls + active) on every change.
+  useEffect(() => {
+    try {
+      const payload = {
+        tabs: tabs.map((t) => ({ url: t.url, title: t.title, favicon: t.favicon })),
+        activeIndex: tabs.findIndex((t) => t.id === activeId),
+      };
+      localStorage.setItem(TABS_KEY(service.id), JSON.stringify(payload));
+    } catch {}
+  }, [tabs, activeId, service.id]);
 
   const webviewRefs = useRef({}); // id -> webview
   const [loadingMap, setLoadingMap] = useState({});
