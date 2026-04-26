@@ -134,6 +134,17 @@ export default function NotesPanel({ open, onClose }) {
   async function onCopy(id)   { await window.chinazes.notes.copy(id); }
   async function onRemove(id) { await window.chinazes.notes.remove(id); reload(); }
 
+  // Send image to AI chat for analysis/editing
+  function onSendToAI(note) {
+    // Dispatch event that AIChatPanel listens to
+    window.dispatchEvent(new CustomEvent('chinazes:send-to-ai', {
+      detail: {
+        imageUrl: note.fileUrl,
+        prompt: 'Опиши что на этом изображении и предложи как его можно улучшить или отредактировать.'
+      }
+    }));
+  }
+
   // Native OS drag — main process initiates webContents.startDrag with file path.
   function onDragStart(id) {
     try { window.chinazes.notes.drag(id); } catch {}
@@ -210,6 +221,7 @@ export default function NotesPanel({ open, onClose }) {
                       setLightbox({ type: n.type, url: n.fileUrl });
                     }
                   }}
+                  onSendToAI={n.type === 'image' || n.type === 'gif' ? () => onSendToAI(n) : undefined}
                 />
               ))}
             </div>
@@ -243,8 +255,9 @@ export default function NotesPanel({ open, onClose }) {
   );
 }
 
-function NoteCard({ note, onCopy, onRemove, onDragStart, onZoom }) {
+function NoteCard({ note, onCopy, onRemove, onDragStart, onZoom, onSendToAI }) {
   const isMedia = note.type === 'image' || note.type === 'gif' || note.type === 'video';
+  const isImage = note.type === 'image' || note.type === 'gif';
   return (
     <div
       className="note-card"
@@ -270,6 +283,9 @@ function NoteCard({ note, onCopy, onRemove, onDragStart, onZoom }) {
         <span className="note-card__label" title={note.label}>{note.label}</span>
         <div className="note-card__btns">
           <button className="btn btn--mini" onClick={onCopy} title="Copy to clipboard">📋</button>
+          {isImage && onSendToAI && (
+            <button className="btn btn--mini" onClick={onSendToAI} title="Отправить в AI">✨</button>
+          )}
           {isMedia && <span className="note-card__hint" title="Drag to chat">⤴</span>}
           <button className="btn btn--mini btn--danger" onClick={onRemove} title="Delete">🗑</button>
         </div>

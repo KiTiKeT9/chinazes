@@ -235,6 +235,7 @@ export default function App() {
         proxyStatus={proxyState.status}
         serverName={proxyState.server?.name}
         onReload={reloadActive}
+        onOpenAI={() => setAiChatOpen(true)}
       />
       <div className="app__body">
         <Sidebar

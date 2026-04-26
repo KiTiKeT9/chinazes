@@ -21,18 +21,63 @@ const PROVIDERS = {
       'gemma2-9b-it',
     ],
     apiKeyUrl: 'https://console.groq.com/keys',
+    vision: false,
   },
   gemini: {
     label: 'Google Gemini',
     defaultModel: 'gemini-2.0-flash',
     models: ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-pro'],
     apiKeyUrl: 'https://aistudio.google.com/apikey',
+    vision: true,
   },
   openai: {
     label: 'OpenAI',
     defaultModel: 'gpt-4o-mini',
     models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo', 'o1-mini'],
     apiKeyUrl: 'https://platform.openai.com/api-keys',
+    vision: true,
+  },
+  deepseek: {
+    label: 'DeepSeek 🇨🇳',
+    defaultModel: 'deepseek-chat',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+    apiKeyUrl: 'https://platform.deepseek.com/api_keys',
+    vision: false,
+    desc: 'Работает в РФ без VPN. Бюджетный китайский провайдер.',
+    baseUrl: 'https://api.deepseek.com/v1',
+  },
+  openrouter: {
+    label: 'OpenRouter 🆓',
+    defaultModel: 'meta-llama/llama-3.2-3b-instruct:free',
+    models: [
+      'meta-llama/llama-3.2-3b-instruct:free',
+      'meta-llama/llama-3.1-8b-instruct:free',
+      'deepseek/deepseek-chat:free',
+      'mistralai/mistral-7b-instruct:free',
+      'google/gemma-2-9b-it:free',
+    ],
+    apiKeyUrl: 'https://openrouter.ai/keys',
+    vision: false,
+    desc: 'Бесплатные модели (free tier) + платные. Работает в РФ.',
+    baseUrl: 'https://openrouter.ai/api/v1',
+  },
+  gigachat: {
+    label: 'GigaChat 🇷🇺',
+    defaultModel: 'GigaChat',
+    models: ['GigaChat', 'GigaChat-Pro', 'GigaChat-Max'],
+    apiKeyUrl: 'https://developers.sber.ru/studio',
+    vision: true,
+    desc: 'Сбер. Работает в РФ без VPN. 1 млн токенов/мес бесплатно.',
+    baseUrl: 'https://api.gigachat.ru/v1',
+  },
+  mistral: {
+    label: 'Mistral AI 🇫🇷',
+    defaultModel: 'mistral-tiny',
+    models: ['mistral-tiny', 'mistral-small-latest', 'mistral-medium-latest', 'pixtral-12b-2409'],
+    apiKeyUrl: 'https://console.mistral.ai/api-keys/',
+    vision: true,
+    desc: 'Французский провайдер. Работает в РФ. Есть бесплатный тариф.',
+    baseUrl: 'https://api.mistral.ai/v1',
   },
 };
 
@@ -84,14 +129,36 @@ async function chat({ messages, provider, apiKey, model }) {
   return chatOpenAICompatible({ messages, key, model: m, provider: p });
 }
 
+function normalizeOpenAIMessages(messages) {
+  // Convert array-style content (text + images) to OpenAI format
+  return messages.map((m) => {
+    if (m.role === 'system') return m;
+    if (Array.isArray(m.content)) {
+      return {
+        role: m.role,
+        content: m.content.map((c) => {
+          if (c.type === 'text') return { type: 'text', text: c.text };
+          if (c.type === 'image_url') return { type: 'image_url', image_url: c.image_url };
+          return c;
+        }),
+      };
+    }
+    return m;
+  });
+}
+
 async function chatOpenAICompatible({ messages, key, model, provider }) {
-  const url = provider === 'openai'
-    ? 'https://api.openai.com/v1/chat/completions'
-    : 'https://api.groq.com/openai/v1/chat/completions';
+  const prov = PROVIDERS[provider] || {};
+  const url = prov.baseUrl
+    ? `${prov.baseUrl}/chat/completions`
+    : (provider === 'openai'
+        ? 'https://api.openai.com/v1/chat/completions'
+        : 'https://api.groq.com/openai/v1/chat/completions');
+  const normalized = normalizeOpenAIMessages(messages);
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages, temperature: 0.4 }),
+    body: JSON.stringify({ model, messages: normalized, temperature: 0.4 }),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
@@ -102,17 +169,39 @@ async function chatOpenAICompatible({ messages, key, model, provider }) {
   return { reply, model };
 }
 
+function toGeminiParts(content) {
+  // content can be string or array of {type, text|image_url}
+  if (typeof content === 'string') return [{ text: content }];
+  if (!Array.isArray(content)) return [{ text: String(content) }];
+  return content.map((c) => {
+    if (c.type === 'text') return { text: c.text };
+    if (c.type === 'image_url') {
+      // Parse data:image/{mime};base64,{data}
+      const url = c.image_url?.url || c.image_url;
+      if (typeof url === 'string' && url.startsWith('data:')) {
+        const match = url.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          const mime = match[1];
+          const data = match[2];
+          return { inlineData: { mimeType: mime, data } };
+        }
+      }
+      // Fallback to URL reference (if not data URI)
+      return { text: `[Image: ${url}]` };
+    }
+    return { text: String(c.text || c) };
+  });
+}
+
 async function chatGemini({ messages, key, model }) {
-  // Gemini expects { contents: [{ role, parts: [{ text }] }] } with role
-  // 'user' or 'model'. System messages are concatenated as a leading user
-  // turn for compatibility.
+  // Gemini expects { contents: [{ role, parts: [{ text|inlineData }] }] }
   const sys = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
   const turns = messages.filter((m) => m.role !== 'system').map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+    parts: toGeminiParts(m.content),
   }));
   if (sys && turns.length && turns[0].role === 'user') {
-    turns[0].parts[0].text = sys + '\n\n' + turns[0].parts[0].text;
+    turns[0].parts.unshift({ text: sys + '\n\n' });
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {
@@ -155,13 +244,17 @@ async function chatStream({ requestId, messages, provider, apiKey, model }, send
 }
 
 async function streamOpenAICompat({ messages, key, model, provider }, onChunk) {
-  const url = provider === 'openai'
-    ? 'https://api.openai.com/v1/chat/completions'
-    : 'https://api.groq.com/openai/v1/chat/completions';
+  const prov = PROVIDERS[provider] || {};
+  const url = prov.baseUrl
+    ? `${prov.baseUrl}/chat/completions`
+    : (provider === 'openai'
+        ? 'https://api.openai.com/v1/chat/completions'
+        : 'https://api.groq.com/openai/v1/chat/completions');
+  const normalized = normalizeOpenAIMessages(messages);
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model, messages, temperature: 0.4, stream: true }),
+    body: JSON.stringify({ model, messages: normalized, temperature: 0.4, stream: true }),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => '');
@@ -194,10 +287,10 @@ async function streamGemini({ messages, key, model }, onChunk) {
   const sys = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
   const turns = messages.filter((m) => m.role !== 'system').map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+    parts: toGeminiParts(m.content),
   }));
   if (sys && turns.length && turns[0].role === 'user') {
-    turns[0].parts[0].text = sys + '\n\n' + turns[0].parts[0].text;
+    turns[0].parts.unshift({ text: sys + '\n\n' });
   }
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
   const res = await fetch(url, {

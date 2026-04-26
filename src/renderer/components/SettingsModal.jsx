@@ -30,6 +30,7 @@ export default function SettingsModal({
   // AI config state
   const [aiProviders, setAiProviders] = useState({});
   const [aiCfg, setAiCfg] = useState({ provider: 'groq', apiKey: '', model: '' });
+  const [aiKeysPerProvider, setAiKeysPerProvider] = useState({}); // separate keys per provider
   const [aiTestStatus, setAiTestStatus] = useState(''); // '' | 'busy' | 'ok' | 'err'
   const [aiTestMsg, setAiTestMsg] = useState('');
   useEffect(() => {
@@ -39,14 +40,33 @@ export default function SettingsModal({
         const provs = await window.chinazes.ai.providers();
         setAiProviders(provs);
         const full = await window.chinazes.ai.getFull();
-        setAiCfg({ provider: full.provider || 'groq', apiKey: full.apiKey || '', model: full.model || '' });
+        // Load provider-specific keys from localStorage
+        const savedKeys = JSON.parse(localStorage.getItem('chinazes:ai-keys-per-provider') || '{}');
+        setAiKeysPerProvider(savedKeys);
+        setAiCfg({
+          provider: full.provider || 'groq',
+          apiKey: savedKeys[full.provider || 'groq'] || full.apiKey || '',
+          model: full.model || ''
+        });
       } catch (e) { console.error(e); }
     })();
   }, [open]);
   async function persistAi(patch) {
     const next = { ...aiCfg, ...patch };
     setAiCfg(next);
-    await window.chinazes.ai.setConfig(next);
+    // Save key for current provider separately
+    if (patch.apiKey !== undefined) {
+      const updatedKeys = { ...aiKeysPerProvider, [next.provider]: patch.apiKey };
+      setAiKeysPerProvider(updatedKeys);
+      localStorage.setItem('chinazes:ai-keys-per-provider', JSON.stringify(updatedKeys));
+    }
+    await window.chinazes.ai.setConfig({ provider: next.provider, apiKey: next.apiKey, model: next.model });
+  }
+  function switchProvider(id) {
+    const info = aiProviders[id];
+    const savedKey = aiKeysPerProvider[id] || '';
+    setAiCfg({ provider: id, apiKey: savedKey, model: info?.defaultModel || '' });
+    persistAi({ provider: id, apiKey: savedKey, model: info?.defaultModel || '' });
   }
   async function testAi() {
     setAiTestStatus('busy'); setAiTestMsg('');
@@ -438,10 +458,13 @@ export default function SettingsModal({
                     <button
                       key={id}
                       className={`ai-provider ${aiCfg.provider === id ? 'ai-provider--active' : ''}`}
-                      onClick={() => persistAi({ provider: id, model: info.defaultModel })}
+                      onClick={() => switchProvider(id)}
+                      title={info.desc || ''}
                     >
                       <div className="ai-provider__name">{info.label}</div>
                       <div className="ai-provider__model">{info.defaultModel}</div>
+                      {info.vision && <span className="ai-provider__badge" title="Vision: может анализировать изображения">👁 Vision</span>}
+                      {info.desc && <div className="ai-provider__desc">{info.desc}</div>}
                     </button>
                   ))}
                 </div>
@@ -449,7 +472,7 @@ export default function SettingsModal({
                 <h4 className="modal__subtitle">API key</h4>
                 <input
                   type="password"
-                  className="input"
+                  className="input input--dark"
                   placeholder={`API key для ${aiProviders[aiCfg.provider]?.label || aiCfg.provider}`}
                   value={aiCfg.apiKey}
                   onChange={(e) => setAiCfg({ ...aiCfg, apiKey: e.target.value })}
@@ -645,6 +668,23 @@ export default function SettingsModal({
                 <div className="svc-list">
                   {allServices.map((svc) => {
                     const enabled = !hiddenIds.has(svc.id);
+                    const keepAudioKey = `chinazes:keep-audio-bg:${svc.id}`;
+                    const keepAudio = (() => {
+                      try {
+                        const v = localStorage.getItem(keepAudioKey);
+                        if (v === '1') return true;
+                        if (v === '0') return false;
+                      } catch {}
+                      // Custom services default to true (assume media), built-ins follow hardcoded list
+                      const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+                      return svc.custom ? true : KEEP_AUDIO_BG_DEFAULTS.has(svc.id);
+                    })();
+                    const setKeepAudio = (val) => {
+                      try {
+                        localStorage.setItem(keepAudioKey, val ? '1' : '0');
+                        window.dispatchEvent(new CustomEvent('chinazes-prefs-changed'));
+                      } catch {}
+                    };
                     return (
                       <div key={svc.id} className="svc-row">
                         <div className="svc-row__icon" style={{ '--accent': svc.accent }}>
@@ -655,6 +695,16 @@ export default function SettingsModal({
                         <div className="svc-row__meta">
                           <div className="svc-row__name">{svc.name}{svc.custom ? ' · custom' : ''}</div>
                           <div className="svc-row__url">{svc.url}</div>
+                          <div className="svc-row__audio">
+                            <label className="svc-row__audio-toggle" title="Продолжать играть звук в фоне">
+                              <input
+                                type="checkbox"
+                                checked={keepAudio}
+                                onChange={(e) => setKeepAudio(e.target.checked)}
+                              />
+                              <span>🔊 Фоновый звук</span>
+                            </label>
+                          </div>
                         </div>
                         <label className="switch" title={enabled ? 'Скрыть' : 'Показать'}>
                           <input

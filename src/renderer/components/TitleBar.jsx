@@ -12,7 +12,16 @@ function fmtBps(bps) {
   return `${(bps / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
 }
 
-export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
+function AIIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+      <path d="M12 6v6l4 2" />
+    </svg>
+  );
+}
+
+export default function TitleBar({ title, proxyStatus, serverName, onReload, onOpenAI }) {
   const api = window.chinazes?.window;
   const [version, setVersion] = useState('');
   const [stats, setStats] = useState({ rxBps: 0, txBps: 0 });
@@ -55,6 +64,11 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
         </span>
       </div>
       <div className="titlebar__actions">
+        {onOpenAI && (
+          <button className="wbtn" onClick={onOpenAI} aria-label="AI Chat" title="AI Assistant (✨)">
+            <AIIcon />
+          </button>
+        )}
         {onReload && (
           <motion.button
             className="wbtn wbtn--reload"

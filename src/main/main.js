@@ -93,10 +93,17 @@ function createWindow() {
     mainWindow = null;
   });
 
-  // Re-apply current proxy state to every webview session that gets created.
+  // Re-apply current proxy state + UA/preload/permissions to every webview
+  // session as it gets created. Built-in service partitions are pre-warmed in
+  // `app.whenReady`, but **custom user services** use ad-hoc partitions
+  // (persist:custom-<id>) we can't enumerate up-front — without this hook they
+  // would never receive the WEBVIEW_PRELOAD and therefore never emit
+  // chinazes:media-state events to the music bar, and would leak the Electron
+  // user-agent to strict sites.
   app.on('web-contents-created', (_event, contents) => {
     if (contents.getType() === 'webview') {
-      proxyManager.applyToSession(contents.session);
+      try { suppressSecurityPrompts(contents.session); } catch {}
+      try { proxyManager.applyToSession(contents.session); } catch {}
     }
   });
 }
@@ -134,7 +141,13 @@ const CH_UA       = '"Google Chrome";v="135", "Chromium";v="135", "Not.A/Brand";
 const CH_UA_MOBILE = '?0';
 const CH_UA_PLAT   = '"Windows"';
 
+const _hardenedSessions = new WeakSet();
 function suppressSecurityPrompts(ses) {
+  if (!ses) return;
+  // Idempotent: web-contents-created fires for every webview, but the same
+  // partition is shared across many — only harden once.
+  if (_hardenedSessions.has(ses)) return;
+  _hardenedSessions.add(ses);
   // Apply Chrome-like UA *before* the first webview navigates.
   try { ses.setUserAgent(DEFAULT_CHROME_UA); } catch {}
   // Rewrite client-hints headers so sites that look at Sec-CH-UA agree with

@@ -110,22 +110,48 @@ export default function ServiceView({ service, visible, registerRef }) {
     };
   }, [registerRef, service.id]);
 
-  // Services where audio MUST keep playing while in background — voice calls,
-  // streams, music. Muting them on tab-switch would drop calls / silence songs.
-  const KEEP_AUDIO_BG = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+  // Built-in defaults — services where audio should keep playing in background
+  // (voice calls, streams, music). Custom services default to `true` (assume
+  // user added them for media). Per-service overrides via Settings.
+  const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+  function loadKeepAudioBg(id, isCustom) {
+    try {
+      const raw = localStorage.getItem(`chinazes:keep-audio-bg:${id}`);
+      if (raw === '1') return true;
+      if (raw === '0') return false;
+    } catch {}
+    return isCustom ? true : KEEP_AUDIO_BG_DEFAULTS.has(id);
+  }
+
   // Track whether the user has visited this service at least once. Until then,
-  // we keep it muted even if it's in KEEP_AUDIO_BG — otherwise Twitch / Spotify
-  // start auto-playing in the background right after app launch.
+  // we keep it muted even if it allows background audio — otherwise auto-play
+  // sites (Twitch / Spotify) blare on app launch.
   const wasVisibleRef = useRef(false);
   if (visible) wasVisibleRef.current = true;
+
+  // Re-read pref on every visibility flip and on storage events from Settings.
+  const [keepBg, setKeepBg] = useState(() => loadKeepAudioBg(service.id, !!service.custom));
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (!e || e.key === `chinazes:keep-audio-bg:${service.id}`) {
+        setKeepBg(loadKeepAudioBg(service.id, !!service.custom));
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('chinazes-prefs-changed', onStorage);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('chinazes-prefs-changed', onStorage);
+    };
+  }, [service.id, service.custom]);
 
   useEffect(() => {
     const wv = ref.current;
     if (!wv) return;
-    const allowBg = KEEP_AUDIO_BG.has(service.id) && wasVisibleRef.current;
+    const allowBg = keepBg && wasVisibleRef.current;
     const shouldMute = !visible && !allowBg;
     try { wv.setAudioMuted?.(shouldMute); } catch {}
-  }, [visible, service.id]);
+  }, [visible, keepBg, service.id]);
 
   return (
     <motion.div

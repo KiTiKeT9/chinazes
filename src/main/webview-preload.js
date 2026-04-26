@@ -104,6 +104,132 @@ const stub = `(() => {
       };
       Object.defineProperty(navigator, 'userAgentData', { value: data, configurable: true });
     } catch {}
+    // navigator.userAgent — Google and other sites detect "Electron" in the UA
+    // string and block login. We strip it to look like regular Chrome.
+    try {
+      const chromeUA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
+      Object.defineProperty(navigator, 'userAgent', {
+        value: chromeUA,
+        writable: false,
+        configurable: true,
+      });
+      // Also override appVersion and platform to match
+      Object.defineProperty(navigator, 'appVersion', {
+        value: '5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
+        writable: false,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, 'platform', {
+        value: 'Win32',
+        writable: false,
+        configurable: true,
+      });
+      // Google checks vendor and webdriver
+      Object.defineProperty(navigator, 'vendor', {
+        value: 'Google Inc.',
+        writable: false,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, 'webdriver', {
+        value: false,
+        writable: false,
+        configurable: true,
+      });
+      // Add fake window.chrome object if missing
+      if (!window.chrome) {
+        window.chrome = {
+          loadTimes: () => {},
+          csi: () => {},
+          app: { isInstalled: false },
+        };
+      }
+      // Set languages like real Chrome
+      Object.defineProperty(navigator, 'languages', {
+        value: ['ru-RU', 'ru', 'en-US', 'en'],
+        writable: false,
+        configurable: true,
+      });
+      // Hardware specs like typical desktop
+      Object.defineProperty(navigator, 'hardwareConcurrency', {
+        value: 8,
+        writable: false,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, 'deviceMemory', {
+        value: 8,
+        writable: false,
+        configurable: true,
+      });
+      // Max touch points (desktop = 0)
+      Object.defineProperty(navigator, 'maxTouchPoints', {
+        value: 0,
+        writable: false,
+        configurable: true,
+      });
+      // PDF viewer plugin (Chrome always has this)
+      try {
+        const mimeTypes = [
+          { type: 'application/pdf', suffixes: 'pdf', description: 'Portable Document Format', enabledPlugin: { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer' } },
+          { type: 'application/x-google-chrome-pdf', suffixes: 'pdf', description: 'Portable Document Format', enabledPlugin: { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer' } }
+        ];
+        Object.defineProperty(navigator, 'mimeTypes', {
+          value: mimeTypes,
+          writable: false,
+          configurable: true,
+        });
+        Object.defineProperty(navigator, 'plugins', {
+          value: [
+            { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format', length: 2, item: (i) => mimeTypes[i] },
+            { name: 'Native Client', filename: 'internal-nacl-plugin', description: '', length: 0 },
+          ],
+          writable: false,
+          configurable: true,
+        });
+      } catch {}
+      // Enhanced chrome object with runtime
+      if (window.chrome) {
+        window.chrome.runtime = window.chrome.runtime || {
+          id: undefined,
+          OnInstalledReason: { CHROME_UPDATE: 'chrome_update', INSTALL: 'install', SHARED_MODULE_UPDATE: 'shared_module_update', UPDATE: 'update' },
+          OnRestartRequiredReason: { APP_UPDATE: 'app_update', OS_UPDATE: 'os_update', PERIODIC: 'periodic' },
+          PlatformArch: { ARM: 'arm', ARM64: 'arm64', MIPS: 'mips', MIPS64: 'mips64', X86_32: 'x86-32', X86_64: 'x86-64' },
+          PlatformNaclArch: { MIPS: 'mips', MIPS64: 'mips64', MIPS64EL: 'mips64el', MIPSEL: 'mipsel', X86_32: 'x86-32', X86_64: 'x86-64' },
+          PlatformOs: { ANDROID: 'android', CROS: 'cros', LINUX: 'linux', MAC: 'mac', OPENBSD: 'openbsd', WIN: 'win' },
+          RequestUpdateCheckStatus: { NO_UPDATE: 'no_update', THROTTLED: 'throttled', UPDATE_AVAILABLE: 'update_available' },
+          OnConnectEvent: { addListener: () => {} },
+          OnMessageEvent: { addListener: () => {} },
+          getManifest: () => ({}),
+          getURL: (path) => 'chrome-extension://' + path,
+        };
+        window.chrome.app = window.chrome.app || {
+          isInstalled: false,
+          InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+          RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+          getDetails: () => null,
+          getIsInstalled: () => false,
+        };
+        window.chrome.csi = window.chrome.csi || (() => ({ startE: Date.now(), onloadT: Date.now() }));
+        window.chrome.loadTimes = window.chrome.loadTimes || (() => ({
+          commitLoadTime: Date.now() / 1000,
+          connectionInfo: 'h2',
+          finishDocumentLoadTime: Date.now() / 1000,
+          finishLoadTime: Date.now() / 1000,
+          firstPaintAfterLoadTime: 0,
+          firstPaintTime: Date.now() / 1000,
+          navigationType: 'Other',
+          npnNegotiatedProtocol: 'h2',
+          npnNegotiatedTlsVersion: 'TLS 1.3',
+          wasAlternateProtocolAvailable: false,
+          wasFetchedViaSpdy: true,
+          wasNpnNegotiated: true,
+        }));
+      }
+      // PluginArray and MimeTypeArray prototypes to look real
+      try {
+        const proto = Object.create(PluginArray.prototype);
+        Object.setPrototypeOf(navigator.plugins, proto);
+      } catch {}
+    } catch {}
   } catch (_) {}
 })();`;
 

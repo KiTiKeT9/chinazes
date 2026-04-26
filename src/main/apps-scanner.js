@@ -108,25 +108,65 @@ function unescapeVDF(s) {
 }
 
 function parseVDF(text) {
-  // Tiny VDF parser — handles nested {} and "key" "value" pairs.
-  const root = {};
-  const stack = [root];
-  const re = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*("([^"\\]*(?:\\.[^"\\]*)*)"|\{|\})/g;
+  // VDF parser - handles nested {} blocks, quoted keys/values, and unquoted numbers
+  // Tokenize first, then parse
+  const tokens = [];
+  const tokenRe = /"([^"\\]*(?:\\.[^"\\]*)*)"|\{|\}|(\d+)/g;
   let m;
-  while ((m = re.exec(text)) !== null) {
-    const key = unescapeVDF(m[1]);
-    const val = m[2];
-    const top = stack[stack.length - 1];
-    if (val === '{') {
-      top[key] = {};
-      stack.push(top[key]);
-    } else if (val === '}') {
-      stack.pop();
-    } else {
-      top[key] = unescapeVDF(m[3]);
+  while ((m = tokenRe.exec(text)) !== null) {
+    if (m[1] !== undefined) {
+      tokens.push({ type: 'string', value: unescapeVDF(m[1]) });
+    } else if (m[0] === '{') {
+      tokens.push({ type: 'open' });
+    } else if (m[0] === '}') {
+      tokens.push({ type: 'close' });
+    } else if (m[2] !== undefined) {
+      tokens.push({ type: 'number', value: m[2] });
     }
   }
-  return root;
+
+  // Parse tokens into nested objects
+  let pos = 0;
+  function parseObject() {
+    const obj = {};
+    while (pos < tokens.length) {
+      const token = tokens[pos];
+      if (token.type === 'close') {
+        pos++;
+        return obj;
+      }
+      if (token.type === 'open') {
+        // Shouldn't happen at object start, skip
+        pos++;
+        continue;
+      }
+      // Get key (string or number)
+      let key;
+      if (token.type === 'string' || token.type === 'number') {
+        key = token.value;
+        pos++;
+      } else {
+        pos++;
+        continue;
+      }
+      
+      if (pos >= tokens.length) break;
+      
+      const valToken = tokens[pos];
+      if (valToken.type === 'open') {
+        pos++;
+        obj[key] = parseObject();
+      } else if (valToken.type === 'string' || valToken.type === 'number') {
+        obj[key] = valToken.value;
+        pos++;
+      } else {
+        pos++;
+      }
+    }
+    return obj;
+  }
+  
+  return parseObject();
 }
 
 async function findSteamRoot() {
@@ -175,52 +215,131 @@ async function findSteamRoot() {
 
 async function scanSteam() {
   const steamRoot = await findSteamRoot();
+  console.log(`[SteamScan] Steam root: ${steamRoot || 'NOT FOUND'}`);
   if (!steamRoot) return [];
 
   // Library folders.
   const libFile = path.join(steamRoot, 'steamapps', 'libraryfolders.vdf');
   const libs = [path.join(steamRoot, 'steamapps')];
+  console.log(`[SteamScan] Reading libraryfolders.vdf: ${libFile}`);
   try {
     const txt = await fsp.readFile(libFile, 'utf8');
+    console.log(`[SteamScan] libraryfolders.vdf size: ${txt.length} chars`);
     const v = parseVDF(txt);
+    console.log(`[SteamScan] Parsed VDF keys: ${Object.keys(v).join(', ')}`);
     const lf = v.libraryfolders || v.LibraryFolders || {};
+    console.log(`[SteamScan] libraryfolders entries: ${Object.keys(lf).length}`);
     for (const key of Object.keys(lf)) {
       const entry = lf[key];
+      console.log(`[SteamScan] Entry ${key}: ${JSON.stringify(entry).slice(0, 100)}`);
       if (entry && typeof entry === 'object' && entry.path) {
-        libs.push(path.join(entry.path, 'steamapps'));
+        const normalizedPath = entry.path.replace(/\//g, '\\');
+        libs.push(path.join(normalizedPath, 'steamapps'));
       } else if (typeof entry === 'string' && /^[A-Z]:/i.test(entry)) {
-        libs.push(path.join(entry, 'steamapps'));
+        const normalizedPath = entry.replace(/\//g, '\\');
+        libs.push(path.join(normalizedPath, 'steamapps'));
       }
     }
-  } catch {}
+    console.log(`[SteamScan] Found libraries: ${libs.join(', ')}`);
+  } catch (e) {
+    console.warn(`[SteamScan] Error reading libraryfolders.vdf: ${e.message}`);
+  }
+
+  // Deduplicate library paths (case-insensitive on Windows)
+  const seenPaths = new Set();
+  const uniqueLibs = [];
+  for (const lib of libs) {
+    const lower = lib.toLowerCase();
+    if (!seenPaths.has(lower)) {
+      seenPaths.add(lower);
+      uniqueLibs.push(lib);
+    }
+  }
+
+  // Auto-discover additional libraries on all drives (D:, E:, F:, etc.)
+  const steamLibraryNames = ['SteamLibrary', 'Steam Library', 'Steam', 'Games', 'Games\\Steam'];
+  for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code++) {
+    const drive = String.fromCharCode(code) + ':\\';
+    if (!fs.existsSync(drive)) continue;
+    for (const name of steamLibraryNames) {
+      const candidate = path.join(drive, name, 'steamapps');
+      const lower = candidate.toLowerCase();
+      if (!seenPaths.has(lower) && fs.existsSync(candidate)) {
+        // Verify it's a real Steam library by checking for appmanifest files
+        try {
+          const files = fs.readdirSync(candidate);
+          if (files.some(f => /^appmanifest_\d+\.acf$/.test(f))) {
+            seenPaths.add(lower);
+            uniqueLibs.push(candidate);
+            console.log(`[SteamScan] Auto-discovered library: ${candidate}`);
+          }
+        } catch {}
+      }
+    }
+  }
+
+  const existingLibs = [];
+  for (const lib of uniqueLibs) {
+    try {
+      if (fs.existsSync(lib)) {
+        existingLibs.push(lib);
+      } else {
+        console.warn(`[SteamScan] Library path does not exist: ${lib}`);
+      }
+    } catch (e) {
+      console.warn(`[SteamScan] Error checking lib path ${lib}: ${e.message}`);
+    }
+  }
+  console.log(`[SteamScan] Existing libraries to scan: ${existingLibs.join(', ')}`);
 
   const games = [];
-  for (const lib of libs) {
+  let skippedNoAppState = 0;
+  let skippedNoAppId = 0;
+  let manifestCount = 0;
+  for (const lib of existingLibs) {
+    console.log(`[SteamScan] Scanning lib: ${lib}`);
     try {
       const files = await fsp.readdir(lib);
-      for (const f of files) {
-        if (!/^appmanifest_\d+\.acf$/.test(f)) continue;
+      const manifests = files.filter(f => /^appmanifest_\d+\.acf$/.test(f));
+      console.log(`[SteamScan] Found ${manifests.length} manifests in ${lib}`);
+      for (const f of manifests) {
+        manifestCount++;
         try {
           const txt = await fsp.readFile(path.join(lib, f), 'utf8');
           const v = parseVDF(txt);
           const app = v.AppState || v.appstate;
-          if (!app) continue;
+          if (!app) {
+            skippedNoAppState++;
+            console.warn(`[SteamScan] No AppState in ${f}, keys: ${Object.keys(v).join(',')}`);
+            continue;
+          }
           const appid = app.appid;
           const name  = app.name;
-          if (!appid || !name) continue;
+          if (!appid) {
+            skippedNoAppId++;
+            console.warn(`[SteamScan] No appid in ${f}: keys=${Object.keys(app).join(',')}`);
+            continue;
+          }
+          // Fallback to "App {appid}" if name is missing (some DLC/tools don't have names)
+          const displayName = name || `App ${appid}`;
           games.push({
             id: 'steam:' + appid,
-            name,
+            name: displayName,
             steamAppId: String(appid),
             path: '', // launched via steam:// URL
             source: 'steam',
             // Steam CDN library capsule — works without auth, served by Akamai/Cloudflare.
             icon: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`,
           });
-        } catch {}
+        } catch (e) {
+          console.warn(`[SteamScan] Error parsing ${f}: ${e.message}`);
+        }
       }
-    } catch {}
+    } catch (e) {
+      console.warn(`[SteamScan] Error reading lib ${lib}: ${e.message}`);
+    }
   }
+  console.log(`[SteamScan] Total manifests processed: ${manifestCount}, games found: ${games.length}, skipped: noAppState=${skippedNoAppState}, noAppId=${skippedNoAppId}`);
   return games;
 }
 
