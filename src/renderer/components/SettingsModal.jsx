@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldIcon, BrandIcon } from './Icons.jsx';
+import { loadPlugins, setEnabled as setPluginEnabled, addCustomPlugin, removePlugin, updateCustomPlugin } from '../plugins.js';
 import { THEMES, getStoredTheme, setStoredTheme } from '../themes.js';
 import { UA_PRESETS, getStoredUA, setStoredUA } from '../user-agents.js';
 import { FREE_POOLS } from '../free-pools.js';
@@ -24,10 +25,25 @@ export default function SettingsModal({
   onAddCustom = () => {},
   onRemoveCustom = () => {},
 }) {
-  const [tab, setTab] = useState('connection'); // 'connection' | 'appearance' | 'services'
+  const [tab, setTab] = useState('connection'); // 'connection' | 'appearance' | 'services' | 'plugins'
   const [newSvcName, setNewSvcName] = useState('');
   const [newSvcUrl, setNewSvcUrl] = useState('');
   const [svcError, setSvcError] = useState('');
+
+  // Plugins state
+  const [plugins, setPlugins] = useState(loadPlugins);
+  const [showAddPlugin, setShowAddPlugin] = useState(false);
+  const [pluginDraft, setPluginDraft] = useState({ name: '', description: '', target: '*', css: '', js: '' });
+  function refreshPlugins() { setPlugins(loadPlugins()); }
+  function togglePlugin(id, enabled) { setPluginEnabled(id, enabled); refreshPlugins(); }
+  function deletePlugin(id) { removePlugin(id); refreshPlugins(); }
+  function submitPlugin() {
+    if (!pluginDraft.name.trim() && !pluginDraft.css.trim() && !pluginDraft.js.trim()) return;
+    addCustomPlugin(pluginDraft);
+    setPluginDraft({ name: '', description: '', target: '*', css: '', js: '' });
+    setShowAddPlugin(false);
+    refreshPlugins();
+  }
   const [engine, setEngine] = useState('warp');
   const [config, setConfig] = useState(null);
   const [link, setLink] = useState('');
@@ -293,10 +309,118 @@ export default function SettingsModal({
                 onClick={() => setTab('services')}
               >Services</button>
               <button
+                className={`modal__seg-btn ${tab === 'plugins' ? 'modal__seg-btn--active' : ''}`}
+                onClick={() => setTab('plugins')}
+              >Plugins</button>
+              <button
                 className={`modal__seg-btn ${tab === 'appearance' ? 'modal__seg-btn--active' : ''}`}
                 onClick={() => setTab('appearance')}
               >Appearance</button>
             </div>
+
+            {tab === 'plugins' && (
+              <section className="modal__body">
+                <p className="modal__hint">
+                  Плагины инжектят CSS / JS внутрь webview конкретного сервиса. Включай
+                  готовые из стора или пиши свои. JS выполняется в контексте сайта, будь
+                  осторожен с тем, что включаешь из чужих источников.
+                </p>
+
+                <div className="svc-list">
+                  {plugins.map((p) => {
+                    const targetSvc = allServices.find((s) => s.id === p.target);
+                    return (
+                      <div key={p.id} className="svc-row plugin-row">
+                        <div className="svc-row__icon" style={{ '--accent': targetSvc?.accent || '#7e8efb' }}>
+                          {p.target === '*'
+                            ? <span className="plugin-target-glob">★</span>
+                            : (targetSvc?.iconUrl
+                                ? <img src={targetSvc.iconUrl} alt="" />
+                                : <BrandIcon id={targetSvc?.icon || p.target} />)}
+                        </div>
+                        <div className="svc-row__meta">
+                          <div className="svc-row__name">
+                            {p.name}
+                            <span className="plugin-badge">
+                              {p.builtin ? 'built-in' : 'custom'}
+                            </span>
+                            <span className="plugin-target">{p.target === '*' ? 'все сервисы' : (targetSvc?.name || p.target)}</span>
+                          </div>
+                          <div className="svc-row__url">{p.description || '—'}</div>
+                        </div>
+                        <label className="switch" title={p.enabled ? 'Отключить' : 'Включить'}>
+                          <input
+                            type="checkbox"
+                            checked={!!p.enabled}
+                            onChange={(e) => togglePlugin(p.id, e.target.checked)}
+                          />
+                          <span className="switch__slider" />
+                        </label>
+                        {!p.builtin && (
+                          <button className="btn btn--ghost btn--small" onClick={() => deletePlugin(p.id)} title="Удалить">×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {!showAddPlugin && (
+                  <div style={{ marginTop: 8 }}>
+                    <button className="btn btn--primary" onClick={() => setShowAddPlugin(true)}>
+                      + Добавить свой плагин
+                    </button>
+                  </div>
+                )}
+
+                {showAddPlugin && (
+                  <div className="plugin-form">
+                    <h4 className="modal__subtitle">Новый плагин</h4>
+                    <div className="plugin-form__row">
+                      <input
+                        className="input"
+                        placeholder="Название"
+                        value={pluginDraft.name}
+                        onChange={(e) => setPluginDraft({ ...pluginDraft, name: e.target.value })}
+                      />
+                      <select
+                        className="input"
+                        value={pluginDraft.target}
+                        onChange={(e) => setPluginDraft({ ...pluginDraft, target: e.target.value })}
+                      >
+                        <option value="*">★ все сервисы</option>
+                        {allServices.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <input
+                      className="input"
+                      placeholder="Описание (необязательно)"
+                      value={pluginDraft.description}
+                      onChange={(e) => setPluginDraft({ ...pluginDraft, description: e.target.value })}
+                    />
+                    <textarea
+                      className="input plugin-form__code"
+                      placeholder="/* CSS */"
+                      rows={4}
+                      value={pluginDraft.css}
+                      onChange={(e) => setPluginDraft({ ...pluginDraft, css: e.target.value })}
+                    />
+                    <textarea
+                      className="input plugin-form__code"
+                      placeholder="// JavaScript"
+                      rows={4}
+                      value={pluginDraft.js}
+                      onChange={(e) => setPluginDraft({ ...pluginDraft, js: e.target.value })}
+                    />
+                    <div className="plugin-form__row">
+                      <button className="btn btn--ghost" onClick={() => setShowAddPlugin(false)}>Отмена</button>
+                      <button className="btn btn--primary" onClick={submitPlugin}>Сохранить</button>
+                    </div>
+                  </div>
+                )}
+              </section>
+            )}
 
             {tab === 'services' && (
               <section className="modal__body">

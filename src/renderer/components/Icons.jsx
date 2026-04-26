@@ -113,6 +113,48 @@ export function TwitchIcon(props) {
   );
 }
 
+export function VKIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...props}>
+      <path d="M12.785 16.241s.288-.032.435-.193c.135-.148.131-.425.131-.425s-.019-1.302.581-1.494c.59-.19 1.347 1.265 2.151 1.825.608.422 1.07.33 1.07.33l2.149-.03s1.124-.07.59-.957c-.043-.072-.31-.654-1.601-1.857-1.349-1.255-1.169-1.052.456-3.222.989-1.32 1.385-2.126 1.262-2.471-.118-.328-.846-.241-.846-.241l-2.42.015s-.18-.025-.312.054c-.13.077-.214.257-.214.257s-.382 1.02-.892 1.887c-1.073 1.832-1.502 1.928-1.677 1.815-.408-.264-.306-1.064-.306-1.633 0-1.776.27-2.515-.523-2.706-.264-.063-.458-.105-1.13-.112-.864-.009-1.595.003-2.009.206-.275.135-.488.436-.358.453.16.022.523.099.715.36.249.337.24 1.092.24 1.092s.142 2.083-.336 2.341c-.328.177-.778-.184-1.735-1.846-.49-.85-.86-1.79-.86-1.79s-.072-.176-.198-.27c-.154-.114-.37-.151-.37-.151l-2.3.015s-.346.01-.473.16c-.114.134-.009.41-.009.41s1.802 4.215 3.842 6.34c1.872 1.948 3.998 1.82 3.998 1.82h.962Z"/>
+    </svg>
+  );
+}
+
+export function InstagramIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+      <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+    </svg>
+  );
+}
+
+export function XIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...props}>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    </svg>
+  );
+}
+
+export function SpotifyIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...props}>
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.586 14.424a.622.622 0 0 1-.857.207c-2.348-1.435-5.304-1.76-8.785-.964a.622.622 0 1 1-.277-1.215c3.809-.871 7.077-.496 9.713 1.115.293.18.387.563.206.857zm1.223-2.722a.78.78 0 0 1-1.072.257c-2.687-1.652-6.785-2.131-9.965-1.166a.78.78 0 1 1-.453-1.494c3.633-1.102 8.147-.568 11.234 1.331.366.225.482.706.256 1.072zm.105-2.835c-3.223-1.914-8.54-2.09-11.618-1.156a.935.935 0 1 1-.542-1.79c3.532-1.072 9.404-.865 13.115 1.338a.936.936 0 0 1-.955 1.609z"/>
+    </svg>
+  );
+}
+
+export function YandexMusicIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...props}>
+      <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2Zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8Zm-1-13v8.27a3 3 0 1 0 2 2.83V9h2V7Z"/>
+    </svg>
+  );
+}
+
 export function BrandIcon({ id, ...props }) {
   switch (id) {
     case 'telegram': return <TelegramIcon {...props} />;
@@ -123,6 +165,11 @@ export function BrandIcon({ id, ...props }) {
     case 'google':   return <GoogleIcon {...props} />;
     case 'gmail':    return <GmailIcon {...props} />;
     case 'twitch':   return <TwitchIcon {...props} />;
+    case 'vk':       return <VKIcon {...props} />;
+    case 'instagram':return <InstagramIcon {...props} />;
+    case 'x':        return <XIcon {...props} />;
+    case 'spotify':  return <SpotifyIcon {...props} />;
+    case 'yamusic':  return <YandexMusicIcon {...props} />;
     default:         return null;
   }
 }

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { applyPlugins } from '../plugins.js';
 
 // Per-service CSS overrides injected into the webview after page load.
 // Used mainly to force a dark color scheme on services that ignore
@@ -60,6 +61,8 @@ export default function ServiceView({ service, visible, registerRef }) {
         const css = SERVICE_CSS[service.id];
         if (css) wv.insertCSS(css);
       } catch {}
+      // Apply enabled user plugins (CSS + JS) for this service.
+      applyPlugins(wv, service.id);
     };
     const onNavigate = (e) => {
       // Persist last URL so the next app start opens where the user left off.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, session, protocol, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, session, protocol, nativeTheme, desktopCapturer } = require('electron');
 
 // Custom protocol for serving user notes (must be registered before app ready).
 protocol.registerSchemesAsPrivileged([
@@ -51,6 +51,11 @@ const SERVICE_PARTITIONS = [
   'persist:google',
   'persist:gmail',
   'persist:twitch',
+  'persist:vk',
+  'persist:instagram',
+  'persist:x',
+  'persist:spotify',
+  'persist:yamusic',
 ];
 
 function createWindow() {
@@ -112,7 +117,15 @@ app.on('select-client-certificate', (event, _wc, _url, _list, callback) => {
 // individually. We also deny any USB/serial permission so WebAuthn can't trigger Windows Hello.
 const WEBVIEW_PRELOAD = path.join(__dirname, 'webview-preload.js');
 
+// Default Chrome UA — applied to every session at creation time. Without this,
+// Electron's UA contains "Electron/<ver>" which Discord (and others) detect and
+// use to disable features like screen-sharing, native push, etc.
+const DEFAULT_CHROME_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
 function suppressSecurityPrompts(ses) {
+  // Apply Chrome-like UA *before* the first webview navigates.
+  try { ses.setUserAgent(DEFAULT_CHROME_UA); } catch {}
   // Inject WebAuthn stub before any page JS runs.
   try {
     const existing = ses.getPreloads ? ses.getPreloads() : [];
@@ -141,6 +154,25 @@ function suppressSecurityPrompts(ses) {
   ses.on('select-usb-device',       (e, _d, cb) => { e.preventDefault(); cb?.(); });
   ses.on('select-hid-device',       (e, _d, cb) => { e.preventDefault(); cb?.(); });
   ses.on('select-serial-port',      (e, _d, cb) => { e.preventDefault(); cb?.(''); });
+
+  // Discord screen-sharing support (and any other site calling getDisplayMedia).
+  // Without this handler Electron returns NotAllowedError and Discord shows
+  // "Screen Share not supported in your browser". We grant the entire screen
+  // by default — same UX as the native Discord app. For per-window picking the
+  // user can rely on Discord's own source picker which lists windows via the
+  // returned MediaStream constraints.
+  try {
+    ses.setDisplayMediaRequestHandler((request, callback) => {
+      desktopCapturer.getSources({ types: ['screen', 'window'] })
+        .then((sources) => {
+          // Prefer the first screen; falls back to first window if none.
+          const screen = sources.find((s) => s.id.startsWith('screen:')) || sources[0];
+          if (!screen) return callback({});
+          callback({ video: screen, audio: 'loopback' });
+        })
+        .catch(() => callback({}));
+    });
+  } catch {}
 }
 
 app.whenReady().then(async () => {
@@ -207,12 +239,15 @@ app.on('before-quit', async () => {
 // --------- IPC: app meta ----------
 ipcMain.handle('app:get-version', () => app.getVersion());
 
-// Apply a User-Agent to every service partition. Empty string -> reset to Electron default.
+// Apply a User-Agent to every service partition. Empty string -> default Chrome UA.
 ipcMain.handle('app:set-user-agent', (_e, ua) => {
+  const effective = ua && ua.trim() ? ua : DEFAULT_CHROME_UA;
   for (const partition of SERVICE_PARTITIONS) {
     const ses = session.fromPartition(partition);
-    try { ses.setUserAgent(ua || ''); } catch {}
+    try { ses.setUserAgent(effective); } catch {}
   }
+  // Also apply to default session (for renderer fetches and any future webviews).
+  try { session.defaultSession.setUserAgent(effective); } catch {}
   return true;
 });
 

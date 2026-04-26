@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { applyPlugins } from '../plugins.js';
 
 let tabSeq = 0;
 const nextTabId = () => `t${++tabSeq}`;
@@ -95,6 +96,7 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
 
     const onStart = () => setLoadingMap((m) => ({ ...m, [id]: true }));
     const onStop  = () => setLoadingMap((m) => ({ ...m, [id]: false }));
+    const onDomReady = () => { applyPlugins(wv, service.id); };
     const onTitle = (e) => patchTab(id, { title: e.title || 'Tab' });
     const onFavicon = (e) => patchTab(id, { favicon: e.favicons?.[0] || null });
     const onNewWindow = (e) => {
@@ -105,12 +107,13 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
 
     wv.addEventListener('did-start-loading', onStart);
     wv.addEventListener('did-stop-loading', onStop);
+    wv.addEventListener('dom-ready', onDomReady);
     wv.addEventListener('page-title-updated', onTitle);
     wv.addEventListener('page-favicon-updated', onFavicon);
     wv.addEventListener('new-window', onNewWindow);
     wv.addEventListener('did-navigate', onNavigate);
     wv.addEventListener('did-navigate-in-page', onNavigate);
-  }, [addTab, patchTab]);
+  }, [addTab, patchTab, service.id]);
 
   // Mute audio of non-active tabs and non-visible service to prevent background autoplay.
   useEffect(() => {
