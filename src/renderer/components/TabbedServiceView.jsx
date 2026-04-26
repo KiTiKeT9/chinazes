@@ -101,6 +101,12 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
       if (ev.channel === 'chinazes:download-video') {
         const url = ev.args?.[0];
         if (url) { try { window.chinazes?.notes?.downloadVideo?.(url); } catch {} }
+      } else if (ev.channel === 'chinazes:media-state') {
+        try {
+          window.dispatchEvent(new CustomEvent('chinazes-media-state', {
+            detail: { serviceId: service.id, state: ev.args?.[0] || null, sender: wv },
+          }));
+        } catch {}
       }
     };
     const onTitle = (e) => patchTab(id, { title: e.title || 'Tab' });
@@ -124,14 +130,18 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
 
   // Mute audio of non-active tabs and non-visible service to prevent background autoplay.
   // Exception: voice/call/streaming services keep playing while service is hidden so
-  // calls and streams don't drop on tab switch.
+  // calls and streams don't drop on tab switch — but ONLY after the user has
+  // visited the service at least once (otherwise Twitch / etc. autoplays at launch).
   const KEEP_AUDIO_BG = new Set(['twitch']);
+  const wasVisibleRef = useRef(false);
+  if (visible) wasVisibleRef.current = true;
   useEffect(() => {
     Object.entries(webviewRefs.current).forEach(([id, wv]) => {
       if (!wv) return;
       const inactiveTab = id !== activeId;
       const hiddenService = !visible;
-      const mute = inactiveTab || (hiddenService && !KEEP_AUDIO_BG.has(service.id));
+      const allowBg = KEEP_AUDIO_BG.has(service.id) && wasVisibleRef.current;
+      const mute = inactiveTab || (hiddenService && !allowBg);
       try { wv.setAudioMuted?.(mute); } catch {}
     });
   }, [visible, activeId, tabs, service.id]);

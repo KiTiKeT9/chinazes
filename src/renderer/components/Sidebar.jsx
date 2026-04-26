@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { BrandIcon, SettingsIcon, ShieldIcon, NotesIcon } from './Icons.jsx';
+import { BrandIcon, SettingsIcon, ShieldIcon, NotesIcon, AIIcon } from './Icons.jsx';
 
 function SidebarAvatar() {
   const [ok, setOk] = useState(true);
@@ -95,6 +95,7 @@ export default function Sidebar({
   onSelect,
   onOpenSettings,
   onOpenNotes,
+  onOpenAI,
   proxyStatus,
 }) {
   const [dragging, setDragging] = useState(false);
@@ -126,6 +127,14 @@ export default function Sidebar({
       </Reorder.Group>
 
       <div className="sidebar__bottom">
+        <button
+          className="tab tab--bottom"
+          onClick={onOpenAI}
+          aria-label="AI Chat"
+          title="AI чат"
+        >
+          <AIIcon />
+        </button>
         <button
           className="tab tab--bottom"
           onClick={onOpenNotes}

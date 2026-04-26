@@ -70,6 +70,12 @@ export default function ServiceView({ service, visible, registerRef }) {
         if (url) {
           try { window.chinazes?.notes?.downloadVideo?.(url); } catch {}
         }
+      } else if (e.channel === 'chinazes:media-state') {
+        try {
+          window.dispatchEvent(new CustomEvent('chinazes-media-state', {
+            detail: { serviceId: service.id, state: e.args?.[0] || null, sender: wv },
+          }));
+        } catch {}
       }
     };
     const onNavigate = (e) => {
@@ -101,12 +107,17 @@ export default function ServiceView({ service, visible, registerRef }) {
   // Services where audio MUST keep playing while in background — voice calls,
   // streams, music. Muting them on tab-switch would drop calls / silence songs.
   const KEEP_AUDIO_BG = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+  // Track whether the user has visited this service at least once. Until then,
+  // we keep it muted even if it's in KEEP_AUDIO_BG — otherwise Twitch / Spotify
+  // start auto-playing in the background right after app launch.
+  const wasVisibleRef = useRef(false);
+  if (visible) wasVisibleRef.current = true;
 
-  // Mute audio when this service is not visible (prevents TikTok/YouTube background autoplay).
   useEffect(() => {
     const wv = ref.current;
     if (!wv) return;
-    const shouldMute = !visible && !KEEP_AUDIO_BG.has(service.id);
+    const allowBg = KEEP_AUDIO_BG.has(service.id) && wasVisibleRef.current;
+    const shouldMute = !visible && !allowBg;
     try { wv.setAudioMuted?.(shouldMute); } catch {}
   }, [visible, service.id]);
 

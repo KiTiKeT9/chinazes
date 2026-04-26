@@ -146,6 +146,103 @@ export const BUILTIN_PLUGINS = [
     `,
   },
   {
+    id: 'global-ai-grammar',
+    name: 'AI · улучшить грамматику',
+    description: 'Двойной клик в любом textarea/contenteditable — AI исправит грамматику и стиль выделенного текста.',
+    target: '*',
+    css: '',
+    js: `
+      (function () {
+        if (window.__chinazesAiGrammarInstalled) return;
+        window.__chinazesAiGrammarInstalled = true;
+
+        document.addEventListener('dblclick', async (e) => {
+          const t = e.target;
+          if (!t) return;
+          const isInput = t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /text|email|url/.test(t.type || ''));
+          const isCe = t.isContentEditable;
+          if (!isInput && !isCe) return;
+          const text = isInput ? (t.value || '') : (t.innerText || '');
+          if (!text || text.length < 4) return;
+          if (!window.chinazesGuest?.ai?.chat) return;
+          const orig = isInput ? t.value : t.innerText;
+          try {
+            t.style.opacity = '0.6';
+            const r = await window.chinazesGuest.ai.chat({
+              messages: [
+                { role: 'system', content: 'Исправь только грамматику, орфографию и стиль. Сохрани смысл и язык. Верни ТОЛЬКО исправленный текст без комментариев.' },
+                { role: 'user', content: text },
+              ],
+            });
+            t.style.opacity = '';
+            if (r.reply) {
+              if (isInput) {
+                t.value = r.reply;
+                t.dispatchEvent(new Event('input', { bubbles: true }));
+              } else {
+                t.innerText = r.reply;
+              }
+            }
+          } catch (err) {
+            t.style.opacity = '';
+            console.warn('grammar fix failed', err);
+          }
+        });
+      })();
+    `,
+  },
+  {
+    id: 'global-ai-summarize-page',
+    name: 'AI · суммаризировать страницу',
+    description: 'Кнопка в нижнем правом углу любого сайта — нажми чтобы AI суммаризировал текущую страницу в 5 пунктов.',
+    target: '*',
+    css: `
+      .__chinazes-sumpage-btn {
+        position: fixed; right: 16px; bottom: 16px; z-index: 999990;
+        background: linear-gradient(135deg, #7e8efb, #b96fff);
+        color: #fff; border: none; border-radius: 24px;
+        padding: 8px 14px; font: 600 12px/1 system-ui;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4); cursor: pointer;
+      }
+      .__chinazes-sumpage-btn:hover { transform: translateY(-1px); }
+    `,
+    js: `
+      (function () {
+        if (window.__chinazesSumPageInstalled) return;
+        window.__chinazesSumPageInstalled = true;
+        const btn = document.createElement('button');
+        btn.className = '__chinazes-sumpage-btn';
+        btn.textContent = '✨ Суммаризировать';
+        btn.onclick = async () => {
+          if (!window.chinazesGuest?.ai?.chat) return;
+          const text = (document.body.innerText || '').slice(0, 12000);
+          const popup = document.createElement('div');
+          popup.className = '__chinazes-ai-popup';
+          popup.style.cssText = 'right:16px;bottom:60px;left:auto;top:auto;position:fixed;width:380px;max-height:60vh;background:#1a1a26;color:#e6e8ff;border:1px solid rgba(255,255,255,0.1);border-radius:12px;box-shadow:0 14px 50px rgba(0,0,0,0.7);padding:14px;font:13px/1.5 system-ui;z-index:999999;overflow-y:auto;white-space:pre-wrap;';
+          popup.textContent = 'Думаю...';
+          document.body.appendChild(popup);
+          try {
+            const r = await window.chinazesGuest.ai.chat({
+              messages: [
+                { role: 'system', content: 'Суммаризируй текст страницы на её языке (или русском если непонятно). Структура: 5 коротких пунктов.' },
+                { role: 'user', content: text },
+              ],
+            });
+            popup.textContent = r.reply || '(пусто)';
+          } catch (e) {
+            popup.textContent = '⚠ ' + (e?.message || 'ошибка') + '\\n\\nНастрой Settings → AI.';
+          }
+          setTimeout(() => {
+            popup.onclick = () => popup.remove();
+            popup.title = 'клик чтобы закрыть';
+          }, 100);
+        };
+        if (document.body) document.body.appendChild(btn);
+        else document.addEventListener('DOMContentLoaded', () => document.body.appendChild(btn));
+      })();
+    `,
+  },
+  {
     id: 'global-ai-ask',
     name: 'Глобально · спросить AI',
     description: 'Выдели текст → кнопка ✨ AI: меню «Объяснить / Перевести / Суммаризировать / Свой запрос». Требует настроенного AI в Settings → AI.',

@@ -69,6 +69,41 @@ export default function SettingsModal({
   const [plugins, setPlugins] = useState(loadPlugins);
   const [showAddPlugin, setShowAddPlugin] = useState(false);
   const [pluginDraft, setPluginDraft] = useState({ name: '', description: '', target: '*', css: '', js: '' });
+  const [aiGenPrompt, setAiGenPrompt] = useState('');
+  const [aiGenBusy, setAiGenBusy] = useState(false);
+  const [aiGenError, setAiGenError] = useState('');
+  async function generatePlugin() {
+    if (!aiGenPrompt.trim() || aiGenBusy) return;
+    setAiGenBusy(true); setAiGenError('');
+    try {
+      const r = await window.chinazes.ai.chat({
+        messages: [
+          {
+            role: 'system',
+            content: 'Ты генератор плагинов для Chinazes. Плагин = JSON-объект с полями: name (короткое имя), description (1 предложение), target ("*" или id сервиса: telegram, discord, youtube, twitch, vk, instagram, x, spotify, yamusic, gmail, google, steam, tiktok), css (строка CSS, может быть пустая), js (строка JS — IIFE, может быть пустая, выполняется в контексте сайта). ВЕРНИ ТОЛЬКО ВАЛИДНЫЙ JSON БЕЗ MARKDOWN-обёрток. Никаких ```json. Только {...}.',
+          },
+          { role: 'user', content: aiGenPrompt.trim() },
+        ],
+      });
+      let text = (r.reply || '').trim();
+      // Strip ```json fences if AI ignored instructions.
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+      const parsed = JSON.parse(text);
+      setPluginDraft({
+        name: parsed.name || 'AI plugin',
+        description: parsed.description || '',
+        target: parsed.target || '*',
+        css: parsed.css || '',
+        js: parsed.js || '',
+      });
+      setShowAddPlugin(true);
+      setAiGenPrompt('');
+    } catch (e) {
+      setAiGenError('Не получилось распарсить ответ AI: ' + (e?.message || e));
+    } finally {
+      setAiGenBusy(false);
+    }
+  }
   function refreshPlugins() { setPlugins(loadPlugins()); }
   function togglePlugin(id, enabled) { setPluginEnabled(id, enabled); refreshPlugins(); }
   function deletePlugin(id) { removePlugin(id); refreshPlugins(); }
@@ -474,11 +509,30 @@ export default function SettingsModal({
                 </div>
 
                 {!showAddPlugin && (
-                  <div style={{ marginTop: 8 }}>
-                    <button className="btn btn--primary" onClick={() => setShowAddPlugin(true)}>
-                      + Добавить свой плагин
-                    </button>
-                  </div>
+                  <>
+                    <h4 className="modal__subtitle">🪄 Сгенерировать через AI</h4>
+                    <div className="plugin-form__row">
+                      <input
+                        className="input"
+                        placeholder='Опиши плагин: "тёмная тема для Spotify", "скрыть рекламу на YouTube" и т.д.'
+                        value={aiGenPrompt}
+                        onChange={(e) => setAiGenPrompt(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') generatePlugin(); }}
+                        disabled={aiGenBusy}
+                      />
+                      <button
+                        className="btn btn--primary"
+                        onClick={generatePlugin}
+                        disabled={aiGenBusy || !aiGenPrompt.trim()}
+                      >{aiGenBusy ? '...' : '✨'}</button>
+                    </div>
+                    {aiGenError && <p className="modal__hint" style={{ color: '#ff7a7a' }}>{aiGenError}</p>}
+                    <div style={{ marginTop: 8 }}>
+                      <button className="btn btn--ghost" onClick={() => setShowAddPlugin(true)}>
+                        + Добавить вручную
+                      </button>
+                    </div>
+                  </>
                 )}
 
                 {showAddPlugin && (

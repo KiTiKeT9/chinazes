@@ -129,12 +129,116 @@ async function chatGemini({ messages, key, model }) {
   return { reply, model };
 }
 
+// Streaming chat. Sends incremental tokens to the renderer via ai:stream-chunk
+// (channel keyed by request id) and a final ai:stream-done.
+async function chatStream({ requestId, messages, provider, apiKey, model }, sender) {
+  const p = provider || config.provider;
+  const key = apiKey || config.apiKey;
+  const m = model || config.model || PROVIDERS[p]?.defaultModel;
+  const send = (channel, payload) => {
+    try { sender.send(channel, { requestId, ...payload }); } catch {}
+  };
+
+  if (!PROVIDERS[p]) { send('ai:stream-done', { error: 'Unknown provider: ' + p }); return; }
+  if (!key) { send('ai:stream-done', { error: 'AI API key not set. Open Settings → AI.' }); return; }
+
+  try {
+    if (p === 'gemini') {
+      await streamGemini({ messages, key, model: m }, (text) => send('ai:stream-chunk', { delta: text }));
+    } else {
+      await streamOpenAICompat({ messages, key, model: m, provider: p }, (text) => send('ai:stream-chunk', { delta: text }));
+    }
+    send('ai:stream-done', {});
+  } catch (e) {
+    send('ai:stream-done', { error: e?.message || String(e) });
+  }
+}
+
+async function streamOpenAICompat({ messages, key, model, provider }, onChunk) {
+  const url = provider === 'openai'
+    ? 'https://api.openai.com/v1/chat/completions'
+    : 'https://api.groq.com/openai/v1/chat/completions';
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+    body: JSON.stringify({ model, messages, temperature: 0.4, stream: true }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`${provider} ${res.status}: ${t.slice(0, 300)}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === '[DONE]') continue;
+      try {
+        const j = JSON.parse(data);
+        const delta = j?.choices?.[0]?.delta?.content;
+        if (delta) onChunk(delta);
+      } catch {}
+    }
+  }
+}
+
+async function streamGemini({ messages, key, model }, onChunk) {
+  const sys = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n');
+  const turns = messages.filter((m) => m.role !== 'system').map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+  if (sys && turns.length && turns[0].role === 'user') {
+    turns[0].parts[0].text = sys + '\n\n' + turns[0].parts[0].text;
+  }
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: turns, generationConfig: { temperature: 0.4 } }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`gemini ${res.status}: ${t.slice(0, 300)}`);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n')) !== -1) {
+      const line = buf.slice(0, idx).trim();
+      buf = buf.slice(idx + 1);
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (!data) continue;
+      try {
+        const j = JSON.parse(data);
+        const delta = j?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (delta) onChunk(delta);
+      } catch {}
+    }
+  }
+}
+
 function register() {
   ipcMain.handle('ai:get-config',   ()      => getConfig());
   ipcMain.handle('ai:get-full',     ()      => getFullConfig());
   ipcMain.handle('ai:set-config',   (_e, p) => setConfig(p));
   ipcMain.handle('ai:providers',    ()      => PROVIDERS);
   ipcMain.handle('ai:chat',         (_e, args) => chat(args || {}));
+  ipcMain.on('ai:chat-stream', (e, args) => chatStream(args || {}, e.sender));
 }
 
 module.exports = { init, register };

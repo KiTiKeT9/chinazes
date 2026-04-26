@@ -8,6 +8,7 @@ import NotesPanel from './components/NotesPanel.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
 import ScreenSharePicker from './components/ScreenSharePicker.jsx';
 import DownloadToast from './components/DownloadToast.jsx';
+import AIChatPanel from './components/AIChatPanel.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
@@ -52,6 +53,7 @@ export default function App() {
   const [resizing, setResizing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
   const [proxyState, setProxyState] = useState({
     status: 'disconnected',
     message: '',
@@ -206,6 +208,7 @@ export default function App() {
           onSelect={onSelectService}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenNotes={() => setNotesOpen(true)}
+          onOpenAI={() => setAiChatOpen(true)}
           proxyStatus={proxyState.status}
         />
         <main className={`app__content ${secondarySvc ? 'app__content--split' : ''} ${resizing ? 'app__content--resizing' : ''}`} ref={dragRef}>
@@ -269,6 +272,7 @@ export default function App() {
         onRemoveCustom={onRemoveCustom}
       />
       <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
+      <AIChatPanel open={aiChatOpen} onClose={() => setAiChatOpen(false)} />
       <UpdateToast />
       <ScreenSharePicker />
       <DownloadToast />

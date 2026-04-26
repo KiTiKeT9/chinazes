@@ -47,3 +47,92 @@ const stub = `(() => {
 
 // Inject before any page script runs (webFrame runs at preload time).
 webFrame.executeJavaScript(stub).catch(() => {});
+
+// ----------------- Media bridge -----------------
+// Polls the page for the most-relevant <video>/<audio> + navigator.mediaSession
+// metadata and forwards it to the host (renderer) via sendToHost. The host
+// renders a unified music bar in the TitleBar and can issue commands back
+// (play/pause/seek/volume/next/prev).
+(function () {
+  if (typeof document === 'undefined') return;
+
+  function pickMedia() {
+    const all = Array.from(document.querySelectorAll('video, audio'));
+    if (!all.length) return null;
+    // Prefer one that's actually playing.
+    const playing = all.find((m) => !m.paused && m.duration > 0 && !m.muted);
+    if (playing) return playing;
+    const anyPlaying = all.find((m) => !m.paused && m.duration > 0);
+    if (anyPlaying) return anyPlaying;
+    // Fallback: longest duration (likely the main player, not ad/preview).
+    return all.sort((a, b) => (b.duration || 0) - (a.duration || 0))[0] || null;
+  }
+
+  function snapshot() {
+    const m = pickMedia();
+    const ms = (typeof navigator !== 'undefined' && navigator.mediaSession) ? navigator.mediaSession.metadata : null;
+    if (!m && !ms) return null;
+    return {
+      title: ms?.title || (m ? document.title : ''),
+      artist: ms?.artist || '',
+      album: ms?.album || '',
+      artwork: ms?.artwork && ms.artwork.length ? ms.artwork[ms.artwork.length - 1].src : '',
+      paused: m ? m.paused : true,
+      currentTime: m ? Math.floor(m.currentTime || 0) : 0,
+      duration: m ? Math.floor(m.duration || 0) : 0,
+      volume: m ? m.volume : 1,
+      muted: m ? m.muted : false,
+      hasMedia: !!m,
+      hasMetadata: !!ms,
+      pageTitle: document.title,
+    };
+  }
+
+  let last = '';
+  setInterval(() => {
+    let s;
+    try { s = snapshot(); } catch { s = null; }
+    if (!s) return;
+    const key = JSON.stringify(s);
+    if (key === last) return;
+    last = key;
+    try { ipcRenderer.sendToHost('chinazes:media-state', s); } catch {}
+  }, 1000);
+
+  ipcRenderer.on('chinazes:media-cmd', (_e, cmd) => {
+    try {
+      const m = pickMedia();
+      switch (cmd?.action) {
+        case 'play':
+          if (m && m.paused) m.play().catch(() => {});
+          break;
+        case 'pause':
+          if (m && !m.paused) m.pause();
+          break;
+        case 'toggle':
+          if (m) (m.paused ? m.play().catch(() => {}) : m.pause());
+          break;
+        case 'seek':
+          if (m && typeof cmd.time === 'number' && Number.isFinite(cmd.time)) {
+            m.currentTime = Math.max(0, Math.min(m.duration || 0, cmd.time));
+          }
+          break;
+        case 'volume':
+          if (m && typeof cmd.value === 'number') {
+            m.volume = Math.max(0, Math.min(1, cmd.value));
+            m.muted = false;
+          }
+          break;
+        case 'next':
+        case 'prev': {
+          const sel = cmd.action === 'next'
+            ? '[aria-label*="Next" i], [aria-label*="Следующ" i], .ytp-next-button, [data-testid="control-button-skip-forward"], button[data-test-id="player-next-button"], button[data-l*="next" i]'
+            : '[aria-label*="Previous" i], [aria-label*="Предыдущ" i], .ytp-prev-button, [data-testid="control-button-skip-back"], button[data-test-id="player-prev-button"], button[data-l*="prev" i]';
+          const btn = document.querySelector(sel);
+          if (btn) btn.click();
+          break;
+        }
+      }
+    } catch (e) { console.warn('[media-cmd]', e); }
+  });
+})();

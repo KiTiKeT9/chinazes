@@ -53,6 +53,24 @@ contextBridge.exposeInMainWorld('chinazes', {
     setConfig:  (patch) => ipcRenderer.invoke('ai:set-config', patch),
     providers:  ()      => ipcRenderer.invoke('ai:providers'),
     chat:       (args)  => ipcRenderer.invoke('ai:chat', args),
+    // Streaming: returns a function `cancel`. onChunk(delta), onDone({error?})
+    chatStream: (args, onChunk, onDone) => {
+      const requestId = `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const chunkFn = (_e, p) => { if (p?.requestId === requestId && p.delta) onChunk(p.delta); };
+      const doneFn  = (_e, p) => {
+        if (p?.requestId !== requestId) return;
+        ipcRenderer.removeListener('ai:stream-chunk', chunkFn);
+        ipcRenderer.removeListener('ai:stream-done', doneFn);
+        onDone?.(p);
+      };
+      ipcRenderer.on('ai:stream-chunk', chunkFn);
+      ipcRenderer.on('ai:stream-done', doneFn);
+      ipcRenderer.send('ai:chat-stream', { requestId, ...args });
+      return () => {
+        ipcRenderer.removeListener('ai:stream-chunk', chunkFn);
+        ipcRenderer.removeListener('ai:stream-done', doneFn);
+      };
+    },
   },
   screenShare: {
     // Main → renderer: 'screen-share:request' with sources, renderer responds via answer().
