@@ -166,6 +166,8 @@ async function scanSteam() {
             steamAppId: String(appid),
             path: '', // launched via steam:// URL
             source: 'steam',
+            // Steam CDN library capsule — works without auth, served by Akamai/Cloudflare.
+            icon: `https://cdn.cloudflare.steamstatic.com/steam/apps/${appid}/header.jpg`,
           });
         } catch {}
       }
@@ -259,7 +261,8 @@ async function scanAll(progressCb) {
   send({ phase: 'icons', total: all.length });
   let i = 0;
   for (const a of all) {
-    if (!a.icon) a.icon = await getIconForApp(a);
+    // Steam tiles already carry a CDN URL; only manuals need local extraction.
+    if (!a.icon && a.path) a.icon = await getIconForApp(a);
     i++;
     if (i % 10 === 0) send({ phase: 'icons', done: i, total: all.length });
   }
@@ -342,10 +345,19 @@ async function removeApp(id) {
 function register() {
   ipcMain.handle('apps:list', async () => {
     const cur = (await loadCache()) || { apps: [], scannedAt: 0 };
+    let dirty = false;
     // Migrate from v1.12.0: drop registry/startmenu entries (now Steam-only auto-scan).
     const before = cur.apps.length;
     const filtered = cur.apps.filter((a) => a.source === 'steam' || a.source === 'manual');
-    if (filtered.length !== before) {
+    if (filtered.length !== before) dirty = true;
+    // Migrate from v1.13.0: backfill Steam CDN icons for entries that lack one.
+    for (const a of filtered) {
+      if (a.source === 'steam' && a.steamAppId && !a.icon) {
+        a.icon = `https://cdn.cloudflare.steamstatic.com/steam/apps/${a.steamAppId}/header.jpg`;
+        dirty = true;
+      }
+    }
+    if (dirty) {
       await saveCache({ apps: filtered, scannedAt: cur.scannedAt });
       return { apps: filtered, scannedAt: cur.scannedAt };
     }

@@ -320,6 +320,19 @@ export default function AppsLauncher({ open, onClose }) {
                     🗑 Удалить
                   </button>
                 )}
+                {activeFolder !== '__all__' && (() => {
+                  const f = folders.find((x) => x.id === activeFolder);
+                  if (!f || !f.appIds.includes(contextMenu.app.id)) return null;
+                  return (
+                    <button
+                      className="apps-ctx__item"
+                      onClick={() => {
+                        toggleAppInFolder(activeFolder, contextMenu.app.id);
+                        setContextMenu(null);
+                      }}
+                    >✕ Убрать из «{f.name}»</button>
+                  );
+                })()}
                 <div className="apps-ctx__sep">Папки</div>
                 {folders.length === 0 && <div className="apps-ctx__hint">Создай папку слева</div>}
                 {folders.map((f) => {
