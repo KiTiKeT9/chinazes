@@ -79,7 +79,11 @@ export const SERVICES = [
   {
     id: 'vk',
     name: 'VK',
-    url: 'https://vk.com/',
+    // id.vk.com is VK's auth domain. Logged-out: full QR login page + altern.
+    // login methods. Logged-in: redirects to vk.com/feed automatically. The
+    // bare vk.com/ landing only shows a stripped widget that doesn't complete
+    // QR auth (image-only "scanned" feedback, no actual session swap).
+    url: 'https://id.vk.com/',
     partition: 'persist:vk',
     accent: '#0077FF',
     gradient: 'linear-gradient(135deg, #4A76A8 0%, #0077FF 100%)',

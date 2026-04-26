@@ -18,6 +18,21 @@ import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomServ
 const ORDER_KEY = 'chinazes:sidebar-order';
 const SPLIT_RATIO_KEY = 'chinazes:split-ratio';
 
+// One-shot migration: VK service URL changed from vk.com/ (stripped landing
+// where QR auth doesn't complete) to id.vk.com/ (real auth domain). Existing
+// users have the old URL cached in localStorage, force-reset it once.
+(function migrateVkUrl() {
+  try {
+    const KEY = 'chinazes:migration:v1.15.5-vk-url';
+    if (localStorage.getItem(KEY)) return;
+    const cached = localStorage.getItem('chinazes:last-url:vk') || '';
+    if (/^https?:\/\/(?:www\.)?vk\.com\/?(?:\?.*)?$/.test(cached) || cached === 'https://vk.com/') {
+      localStorage.removeItem('chinazes:last-url:vk');
+    }
+    localStorage.setItem(KEY, '1');
+  } catch {}
+})();
+
 function loadSplitRatio() {
   const v = parseFloat(localStorage.getItem(SPLIT_RATIO_KEY) || '0.5');
   return Number.isFinite(v) && v > 0.1 && v < 0.9 ? v : 0.5;
