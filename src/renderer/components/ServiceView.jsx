@@ -64,6 +64,14 @@ export default function ServiceView({ service, visible, registerRef }) {
       // Apply enabled user plugins (CSS + JS) for this service.
       applyPlugins(wv, service.id);
     };
+    const onIpc = (e) => {
+      if (e.channel === 'chinazes:download-video') {
+        const url = e.args?.[0];
+        if (url) {
+          try { window.chinazes?.notes?.downloadVideo?.(url); } catch {}
+        }
+      }
+    };
     const onNavigate = (e) => {
       // Persist last URL so the next app start opens where the user left off.
       try {
@@ -76,24 +84,31 @@ export default function ServiceView({ service, visible, registerRef }) {
     wv.addEventListener('did-start-loading', onStart);
     wv.addEventListener('did-stop-loading', onStop);
     wv.addEventListener('dom-ready', onDomReady);
+    wv.addEventListener('ipc-message', onIpc);
     wv.addEventListener('did-navigate', onNavigate);
     wv.addEventListener('did-navigate-in-page', onNavigate);
     return () => {
       wv.removeEventListener('did-start-loading', onStart);
       wv.removeEventListener('did-stop-loading', onStop);
       wv.removeEventListener('dom-ready', onDomReady);
+      wv.removeEventListener('ipc-message', onIpc);
       wv.removeEventListener('did-navigate', onNavigate);
       wv.removeEventListener('did-navigate-in-page', onNavigate);
       registerRef?.(null);
     };
   }, [registerRef, service.id]);
 
+  // Services where audio MUST keep playing while in background — voice calls,
+  // streams, music. Muting them on tab-switch would drop calls / silence songs.
+  const KEEP_AUDIO_BG = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+
   // Mute audio when this service is not visible (prevents TikTok/YouTube background autoplay).
   useEffect(() => {
     const wv = ref.current;
     if (!wv) return;
-    try { wv.setAudioMuted?.(!visible); } catch {}
-  }, [visible]);
+    const shouldMute = !visible && !KEEP_AUDIO_BG.has(service.id);
+    try { wv.setAudioMuted?.(shouldMute); } catch {}
+  }, [visible, service.id]);
 
   return (
     <motion.div

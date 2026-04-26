@@ -24,6 +24,7 @@ const fs = require('node:fs');
 const proxyManager = require('./proxy-manager');
 const updater = require('./updater');
 const notes = require('./notes');
+const videoDownloader = require('./video-downloader');
 const netMonitor = require('./net-monitor');
 
 let mainWindow;
@@ -156,24 +157,86 @@ function suppressSecurityPrompts(ses) {
   ses.on('select-serial-port',      (e, _d, cb) => { e.preventDefault(); cb?.(''); });
 
   // Discord screen-sharing support (and any other site calling getDisplayMedia).
-  // Without this handler Electron returns NotAllowedError and Discord shows
-  // "Screen Share not supported in your browser". We grant the entire screen
-  // by default — same UX as the native Discord app. For per-window picking the
-  // user can rely on Discord's own source picker which lists windows via the
-  // returned MediaStream constraints.
+  // We surface a custom picker UI in the renderer instead of auto-selecting the
+  // primary screen — otherwise users could only ever share their main display
+  // and never a specific window.
   try {
-    ses.setDisplayMediaRequestHandler((request, callback) => {
-      desktopCapturer.getSources({ types: ['screen', 'window'] })
-        .then((sources) => {
-          // Prefer the first screen; falls back to first window if none.
-          const screen = sources.find((s) => s.id.startsWith('screen:')) || sources[0];
-          if (!screen) return callback({});
-          callback({ video: screen, audio: 'loopback' });
-        })
-        .catch(() => callback({}));
+    ses.setDisplayMediaRequestHandler(async (request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ['screen', 'window'],
+          thumbnailSize: { width: 320, height: 200 },
+          fetchWindowIcons: true,
+        });
+        const payload = sources.map((s) => ({
+          id: s.id,
+          name: s.name,
+          thumbnail: s.thumbnail?.toDataURL?.() || '',
+          appIcon: s.appIcon?.toDataURL?.() || '',
+          isScreen: s.id.startsWith('screen:'),
+        }));
+        const picked = await askRendererForSource(payload);
+        if (!picked) return callback({});
+        const source = sources.find((s) => s.id === picked);
+        if (!source) return callback({});
+        callback({ video: source, audio: 'loopback' });
+      } catch (e) {
+        console.error('[screen-share] handler failed', e);
+        try { callback({}); } catch {}
+      }
     });
   } catch {}
 }
+
+// Bridge between main's getDisplayMedia handler and the renderer picker UI.
+// Each request gets a unique id; renderer responds with `screen-share:answer`.
+let nextScreenShareId = 1;
+const pendingScreenShare = new Map(); // id -> { resolve }
+
+function askRendererForSource(sources) {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return resolve(null);
+    const requestId = nextScreenShareId++;
+    pendingScreenShare.set(requestId, resolve);
+    mainWindow.webContents.send('screen-share:request', { requestId, sources });
+    // Safety timeout: cancel after 60s.
+    setTimeout(() => {
+      if (pendingScreenShare.has(requestId)) {
+        pendingScreenShare.delete(requestId);
+        resolve(null);
+      }
+    }, 60_000);
+  });
+}
+
+// IPC: download a video URL (yt-dlp) into notesDir and add it as a note.
+ipcMain.handle('notes:download-video', async (e, url) => {
+  const sender = e.sender;
+  const sendProgress = (p) => {
+    try { sender.send('notes:download-progress', { url, ...p }); } catch {}
+  };
+  try {
+    sendProgress({ phase: 'starting' });
+    const file = await videoDownloader.downloadVideo(url, notes.getNotesDir(), sendProgress);
+    const note = notes.addExistingFile({ file, type: 'video', label: path.basename(file) });
+    sendProgress({ phase: 'done', noteId: note?.id });
+    // Refresh notes list in any open NotesPanel.
+    try {
+      BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('notes:changed'));
+    } catch {}
+    return { ok: true, note };
+  } catch (err) {
+    sendProgress({ phase: 'error', message: err.message });
+    return { ok: false, error: err.message };
+  }
+});
+
+ipcMain.on('screen-share:answer', (_e, { requestId, sourceId }) => {
+  const resolve = pendingScreenShare.get(requestId);
+  if (!resolve) return;
+  pendingScreenShare.delete(requestId);
+  resolve(sourceId || null);
+});
 
 app.whenReady().then(async () => {
   // Windows: required for native Notifications to render with the correct app

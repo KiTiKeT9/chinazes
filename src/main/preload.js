@@ -40,6 +40,21 @@ contextBridge.exposeInMainWorld('chinazes', {
     remove: (id)      => ipcRenderer.invoke('notes:remove', id),
     copy:   (id)      => ipcRenderer.invoke('notes:copy', id),
     drag:   (id)      => ipcRenderer.invoke('notes:drag', id),
+    downloadVideo: (url) => ipcRenderer.invoke('notes:download-video', url),
+    onDownloadProgress: (cb) => {
+      const fn = (_e, p) => cb(p);
+      ipcRenderer.on('notes:download-progress', fn);
+      return () => ipcRenderer.removeListener('notes:download-progress', fn);
+    },
+  },
+  screenShare: {
+    // Main → renderer: 'screen-share:request' with sources, renderer responds via answer().
+    onRequest: (cb) => {
+      const fn = (_e, payload) => cb(payload);
+      ipcRenderer.on('screen-share:request', fn);
+      return () => ipcRenderer.removeListener('screen-share:request', fn);
+    },
+    answer: (requestId, sourceId) => ipcRenderer.send('screen-share:answer', { requestId, sourceId }),
   },
   updater: {
     check:   () => ipcRenderer.invoke('updater:check'),

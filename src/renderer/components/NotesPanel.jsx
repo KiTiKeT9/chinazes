@@ -19,6 +19,15 @@ export default function NotesPanel({ open, onClose }) {
 
   useEffect(() => { if (open) reload(); }, [open, reload]);
 
+  // Refresh when a video download finishes (or any other 'notes:changed' event).
+  useEffect(() => {
+    if (!window.chinazes?.notes?.onDownloadProgress) return;
+    const off = window.chinazes.notes.onDownloadProgress((p) => {
+      if (p.phase === 'done') reload();
+    });
+    return () => off?.();
+  }, [reload]);
+
   // Close on outside click. Backdrop is pointer-events:none (so chats below stay
   // interactive), so we can't rely on backdrop onClick — listen at the document
   // level and check whether the target is inside the panel.

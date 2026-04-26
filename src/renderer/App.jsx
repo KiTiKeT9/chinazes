@@ -6,6 +6,8 @@ import TabbedServiceView from './components/TabbedServiceView.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import NotesPanel from './components/NotesPanel.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
+import ScreenSharePicker from './components/ScreenSharePicker.jsx';
+import DownloadToast from './components/DownloadToast.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
@@ -268,6 +270,8 @@ export default function App() {
       />
       <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
       <UpdateToast />
+      <ScreenSharePicker />
+      <DownloadToast />
     </div>
   );
 }

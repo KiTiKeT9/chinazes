@@ -102,6 +102,28 @@ function guessExt(mime) {
   return '';
 }
 
+// Add a note for a file that already lives inside notesDir (e.g. downloaded
+// video by yt-dlp). Caller is responsible for ensuring the file is in notesDir.
+function addExistingFile({ file, type, label, mime }) {
+  if (!file || !fs.existsSync(file)) return null;
+  const id = crypto.randomBytes(6).toString('hex');
+  const ext = (path.extname(file) || '').slice(1).toLowerCase();
+  const entry = {
+    id,
+    type: type || detectType(mime || '', file),
+    ext,
+    mime: mime || '',
+    file,
+    label: label || path.basename(file),
+    createdAt: Date.now(),
+  };
+  index.unshift(entry);
+  saveIndex();
+  return publicNote(entry);
+}
+
+function getNotesDir() { return notesDir; }
+
 function remove(id) {
   const i = index.findIndex((n) => n.id === id);
   if (i < 0) return false;
@@ -157,4 +179,4 @@ function register() {
   ipcMain.handle('notes:drag',   (e, id)       => startDrag(e.sender, id));
 }
 
-module.exports = { init, register };
+module.exports = { init, register, addExistingFile, getNotesDir };

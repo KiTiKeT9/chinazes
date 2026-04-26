@@ -97,6 +97,12 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
     const onStart = () => setLoadingMap((m) => ({ ...m, [id]: true }));
     const onStop  = () => setLoadingMap((m) => ({ ...m, [id]: false }));
     const onDomReady = () => { applyPlugins(wv, service.id); };
+    const onIpc = (ev) => {
+      if (ev.channel === 'chinazes:download-video') {
+        const url = ev.args?.[0];
+        if (url) { try { window.chinazes?.notes?.downloadVideo?.(url); } catch {} }
+      }
+    };
     const onTitle = (e) => patchTab(id, { title: e.title || 'Tab' });
     const onFavicon = (e) => patchTab(id, { favicon: e.favicons?.[0] || null });
     const onNewWindow = (e) => {
@@ -108,6 +114,7 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
     wv.addEventListener('did-start-loading', onStart);
     wv.addEventListener('did-stop-loading', onStop);
     wv.addEventListener('dom-ready', onDomReady);
+    wv.addEventListener('ipc-message', onIpc);
     wv.addEventListener('page-title-updated', onTitle);
     wv.addEventListener('page-favicon-updated', onFavicon);
     wv.addEventListener('new-window', onNewWindow);
@@ -116,13 +123,18 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
   }, [addTab, patchTab, service.id]);
 
   // Mute audio of non-active tabs and non-visible service to prevent background autoplay.
+  // Exception: voice/call/streaming services keep playing while service is hidden so
+  // calls and streams don't drop on tab switch.
+  const KEEP_AUDIO_BG = new Set(['twitch']);
   useEffect(() => {
     Object.entries(webviewRefs.current).forEach(([id, wv]) => {
       if (!wv) return;
-      const mute = !visible || id !== activeId;
+      const inactiveTab = id !== activeId;
+      const hiddenService = !visible;
+      const mute = inactiveTab || (hiddenService && !KEEP_AUDIO_BG.has(service.id));
       try { wv.setAudioMuted?.(mute); } catch {}
     });
-  }, [visible, activeId, tabs]);
+  }, [visible, activeId, tabs, service.id]);
 
   return (
     <motion.div
