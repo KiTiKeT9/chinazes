@@ -72,6 +72,38 @@ const stub = `(() => {
       window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = () => Promise.resolve(false);
       window.PublicKeyCredential.isConditionalMediationAvailable               = () => Promise.resolve(false);
     }
+    // navigator.userAgentData — strict sites (Spotify, VK, banks) read this JS
+    // API directly to fingerprint the browser. Electron's default leaks
+    // "Chromium" + "Not A Brand"; we override with Chrome 135 brand info that
+    // matches the Sec-CH-UA headers we rewrite in the main process.
+    try {
+      const brands = [
+        { brand: 'Google Chrome', version: '135' },
+        { brand: 'Chromium',      version: '135' },
+        { brand: 'Not.A/Brand',   version: '99'  },
+      ];
+      const fullVersions = brands.map(b => ({ brand: b.brand, version: b.version + '.0.0.0' }));
+      const data = {
+        brands,
+        mobile: false,
+        platform: 'Windows',
+        getHighEntropyValues: (keys) => Promise.resolve({
+          architecture: 'x86',
+          bitness: '64',
+          brands,
+          fullVersionList: fullVersions,
+          mobile: false,
+          model: '',
+          platform: 'Windows',
+          platformVersion: '15.0.0',
+          uaFullVersion: '135.0.0.0',
+          wow64: false,
+          ...Object.fromEntries((keys || []).map(k => [k, undefined])),
+        }),
+        toJSON: () => ({ brands, mobile: false, platform: 'Windows' }),
+      };
+      Object.defineProperty(navigator, 'userAgentData', { value: data, configurable: true });
+    } catch {}
   } catch (_) {}
 })();`;
 

@@ -127,11 +127,14 @@ async function findSteamRoot() {
   for (const k of regKeys) {
     const out = await regQuery(k);
     if (!out) continue;
-    // Look for SteamPath or InstallPath REG_SZ.
-    const m = out.match(/\s+(?:SteamPath|InstallPath)\s+REG_SZ\s+(.+)/i);
+    // Look for SteamPath or InstallPath REG_SZ. Use [^\r\n] to exclude Windows
+    // CR which `.+` would otherwise capture and corrupt the path.
+    const m = out.match(/(?:SteamPath|InstallPath)\s+REG_SZ\s+([^\r\n]+)/i);
     if (m) {
-      const p = m[1].trim().replace(/\//g, '\\');
-      if (fs.existsSync(path.join(p, 'steam.exe'))) return p;
+      const p = m[1].trim().replace(/\//g, '\\').replace(/[\\]+$/, '');
+      try {
+        if (fs.existsSync(path.join(p, 'steam.exe'))) return p;
+      } catch {}
     }
   }
   // 2) Common install dirs across all drive letters (A:..Z:).

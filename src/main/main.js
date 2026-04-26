@@ -137,23 +137,29 @@ const CH_UA_PLAT   = '"Windows"';
 function suppressSecurityPrompts(ses) {
   // Apply Chrome-like UA *before* the first webview navigates.
   try { ses.setUserAgent(DEFAULT_CHROME_UA); } catch {}
-  // Rewrite client-hints headers so sites that look at Sec-CH-UA agree with the UA string.
+  // Rewrite client-hints headers so sites that look at Sec-CH-UA agree with
+  // the UA string. We strip ALL existing Sec-CH-UA* variants (regardless of
+  // case Electron used) and inject a clean Chrome-shaped set on every HTTPS
+  // request — Chrome sends these unconditionally, so doing the same is safe.
   try {
     ses.webRequest.onBeforeSendHeaders((details, callback) => {
       const h = details.requestHeaders || {};
-      if (h['sec-ch-ua'] || h['Sec-CH-UA']) {
-        h['sec-ch-ua'] = CH_UA;
-        h['Sec-CH-UA'] = CH_UA;
-      } else {
-        // Some sites only send these on certain requests; do not inject if absent.
+      // Strip any existing variants (Electron sends mixed-case).
+      for (const k of Object.keys(h)) {
+        const low = k.toLowerCase();
+        if (low === 'sec-ch-ua' || low === 'sec-ch-ua-mobile' || low === 'sec-ch-ua-platform' ||
+            low === 'sec-ch-ua-platform-version' || low === 'sec-ch-ua-arch' ||
+            low === 'sec-ch-ua-bitness' || low === 'sec-ch-ua-full-version' ||
+            low === 'sec-ch-ua-full-version-list' || low === 'sec-ch-ua-model' ||
+            low === 'sec-ch-ua-wow64') {
+          delete h[k];
+        }
       }
-      if (h['sec-ch-ua-mobile'] || h['Sec-CH-UA-Mobile']) {
-        h['sec-ch-ua-mobile'] = CH_UA_MOBILE;
-        h['Sec-CH-UA-Mobile'] = CH_UA_MOBILE;
-      }
-      if (h['sec-ch-ua-platform'] || h['Sec-CH-UA-Platform']) {
+      // Only inject on HTTPS (matches Chrome behavior — never on http://).
+      if (details.url && details.url.startsWith('https://')) {
+        h['sec-ch-ua']          = CH_UA;
+        h['sec-ch-ua-mobile']   = CH_UA_MOBILE;
         h['sec-ch-ua-platform'] = CH_UA_PLAT;
-        h['Sec-CH-UA-Platform'] = CH_UA_PLAT;
       }
       callback({ requestHeaders: h });
     });
