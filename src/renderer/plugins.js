@@ -322,19 +322,23 @@ export const BUILTIN_PLUGINS = [
           if (popup) { popup.remove(); popup = null; }
         }
 
-        async function ask(text, instruction) {
+        function askStream(text, instruction, onDelta, onDone) {
           if (!window.chinazesGuest || !window.chinazesGuest.ai) {
-            return { reply: 'Bridge chinazesGuest.ai не доступен.' };
+            onDone?.({ error: 'Bridge chinazesGuest.ai не доступен.' });
+            return () => {};
           }
           const messages = [
             { role: 'system', content: 'Ты помощник внутри браузера. Отвечай кратко и по делу на языке пользователя.' },
             { role: 'user', content: instruction + '\\n\\n---\\n' + text },
           ];
-          try {
-            return await window.chinazesGuest.ai.chat({ messages });
-          } catch (e) {
-            return { reply: 'Ошибка: ' + (e?.message || String(e)) + '\\n\\nНастрой провайдера в Settings → AI.' };
+          if (window.chinazesGuest.ai.chatStream) {
+            return window.chinazesGuest.ai.chatStream({ messages }, onDelta, onDone);
           }
+          // Fallback: non-streaming.
+          window.chinazesGuest.ai.chat({ messages })
+            .then((r) => { onDelta?.(r.reply || ''); onDone?.({}); })
+            .catch((e) => onDone?.({ error: e?.message || String(e) }));
+          return () => {};
         }
 
         function openPopup(text, range) {
@@ -363,12 +367,23 @@ export const BUILTIN_PLUGINS = [
           const body = popup.querySelector('.__chinazes-ai-popup__body');
           const setBusy = (b) => body.classList.toggle('__chinazes-ai-popup__body--busy', !!b);
 
-          async function run(instruction) {
+          let cancelStream = null;
+          function run(instruction) {
+            if (cancelStream) { try { cancelStream(); } catch {} }
             setBusy(true);
-            body.textContent = 'Думаю...';
-            const r = await ask(text, instruction);
-            setBusy(false);
-            body.textContent = r.reply || '(пусто)';
+            body.textContent = '';
+            let buf = '';
+            cancelStream = askStream(
+              text,
+              instruction,
+              (delta) => { buf += delta; body.textContent = buf; },
+              (res) => {
+                setBusy(false);
+                cancelStream = null;
+                if (res?.error) body.textContent = '⚠ ' + res.error + '\\n\\nНастрой Settings → AI.';
+                else if (!buf) body.textContent = '(пусто)';
+              }
+            );
           }
 
           popup.querySelector('.__chinazes-ai-popup__close').onclick = clear;

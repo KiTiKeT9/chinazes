@@ -18,6 +18,25 @@ try {
       // Returns a Promise resolving with { reply, model } or rejecting.
       chat: (args) => ipcRenderer.invoke('ai:chat', args || {}),
       getConfig: () => ipcRenderer.invoke('ai:get-config'),
+      // Streaming variant. onChunk(deltaText), onDone({error?}). Returns
+      // cancel(): unbind listeners (does not abort the upstream request).
+      chatStream: (args, onChunk, onDone) => {
+        const requestId = `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const chunkFn = (_e, p) => { if (p?.requestId === requestId && p.delta) { try { onChunk?.(p.delta); } catch {} } };
+        const doneFn  = (_e, p) => {
+          if (p?.requestId !== requestId) return;
+          ipcRenderer.removeListener('ai:stream-chunk', chunkFn);
+          ipcRenderer.removeListener('ai:stream-done', doneFn);
+          try { onDone?.(p); } catch {}
+        };
+        ipcRenderer.on('ai:stream-chunk', chunkFn);
+        ipcRenderer.on('ai:stream-done', doneFn);
+        ipcRenderer.send('ai:chat-stream', { requestId, ...(args || {}) });
+        return () => {
+          ipcRenderer.removeListener('ai:stream-chunk', chunkFn);
+          ipcRenderer.removeListener('ai:stream-done', doneFn);
+        };
+      },
     },
   };
   if (typeof contextBridge !== 'undefined' && contextBridge.exposeInMainWorld) {

@@ -72,6 +72,38 @@ export default function SettingsModal({
   const [aiGenPrompt, setAiGenPrompt] = useState('');
   const [aiGenBusy, setAiGenBusy] = useState(false);
   const [aiGenError, setAiGenError] = useState('');
+  const [importUrl, setImportUrl] = useState('');
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState('');
+  async function importFromUrl() {
+    if (!importUrl.trim() || importBusy) return;
+    setImportBusy(true); setImportError('');
+    try {
+      const res = await fetch(importUrl.trim());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const j = await res.json();
+      const items = Array.isArray(j) ? j : [j];
+      let added = 0;
+      for (const p of items) {
+        if (!p || (typeof p !== 'object')) continue;
+        addCustomPlugin({
+          name: p.name || 'Imported',
+          description: p.description || '',
+          target: p.target || '*',
+          css: p.css || '',
+          js: p.js || '',
+        });
+        added++;
+      }
+      if (added === 0) throw new Error('JSON не содержит плагинов');
+      setImportUrl('');
+      refreshPlugins();
+    } catch (e) {
+      setImportError('Ошибка импорта: ' + (e?.message || e));
+    } finally {
+      setImportBusy(false);
+    }
+  }
   async function generatePlugin() {
     if (!aiGenPrompt.trim() || aiGenBusy) return;
     setAiGenBusy(true); setAiGenError('');
@@ -510,6 +542,24 @@ export default function SettingsModal({
 
                 {!showAddPlugin && (
                   <>
+                    <h4 className="modal__subtitle">📥 Импорт по URL</h4>
+                    <div className="plugin-form__row">
+                      <input
+                        className="input"
+                        placeholder="https://example.com/plugins.json"
+                        value={importUrl}
+                        onChange={(e) => setImportUrl(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') importFromUrl(); }}
+                        disabled={importBusy}
+                      />
+                      <button
+                        className="btn btn--primary"
+                        onClick={importFromUrl}
+                        disabled={importBusy || !importUrl.trim()}
+                      >{importBusy ? '...' : '↓'}</button>
+                    </div>
+                    {importError && <p className="modal__hint" style={{ color: '#ff7a7a' }}>{importError}</p>}
+
                     <h4 className="modal__subtitle">🪄 Сгенерировать через AI</h4>
                     <div className="plugin-form__row">
                       <input
