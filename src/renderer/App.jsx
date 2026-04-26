@@ -10,6 +10,7 @@ import ScreenSharePicker from './components/ScreenSharePicker.jsx';
 import DownloadToast from './components/DownloadToast.jsx';
 import AIChatPanel from './components/AIChatPanel.jsx';
 import AppsLauncher from './components/AppsLauncher.jsx';
+import CoBrowse from './components/CoBrowse.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
@@ -56,6 +57,7 @@ export default function App() {
   const [notesOpen, setNotesOpen] = useState(false);
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
+  const [coBrowseOpen, setCoBrowseOpen] = useState(false);
   const [proxyState, setProxyState] = useState({
     status: 'disconnected',
     message: '',
@@ -144,6 +146,8 @@ export default function App() {
     try { wv.reload(); } catch {}
   }, [active]);
 
+  const getActiveWebview = useCallback(() => webviewRefs.current[active] || null, [active]);
+
   const onSelectService = useCallback((id, opts = {}) => {
     if (opts.split) {
       // Toggle as secondary. Allow same id as the primary — two independent
@@ -212,6 +216,7 @@ export default function App() {
           onOpenNotes={() => setNotesOpen(true)}
           onOpenAI={() => setAiChatOpen(true)}
           onOpenApps={() => setAppsOpen(true)}
+          onOpenCoBrowse={() => setCoBrowseOpen(true)}
           proxyStatus={proxyState.status}
         />
         <main className={`app__content ${secondarySvc ? 'app__content--split' : ''} ${resizing ? 'app__content--resizing' : ''}`} ref={dragRef}>
@@ -277,6 +282,7 @@ export default function App() {
       <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
       <AIChatPanel open={aiChatOpen} onClose={() => setAiChatOpen(false)} />
       <AppsLauncher open={appsOpen} onClose={() => setAppsOpen(false)} />
+      <CoBrowse open={coBrowseOpen} onClose={() => setCoBrowseOpen(false)} getActiveWebview={getActiveWebview} />
       <UpdateToast />
       <ScreenSharePicker />
       <DownloadToast />
