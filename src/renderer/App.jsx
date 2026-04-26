@@ -148,6 +148,23 @@ export default function App() {
 
   const getActiveWebview = useCallback(() => webviewRefs.current[active] || null, [active]);
 
+  // Ctrl+Shift+I / F12 — open DevTools for the currently focused webview.
+  useEffect(() => {
+    const onKey = (e) => {
+      const isDev = (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i')) || e.key === 'F12';
+      if (!isDev) return;
+      e.preventDefault();
+      const wv = webviewRefs.current[active];
+      if (!wv) return;
+      try {
+        if (wv.isDevToolsOpened?.()) wv.closeDevTools();
+        else wv.openDevTools();
+      } catch {}
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [active]);
+
   const onSelectService = useCallback((id, opts = {}) => {
     if (opts.split) {
       // Toggle as secondary. Allow same id as the primary — two independent

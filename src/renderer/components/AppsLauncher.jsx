@@ -296,7 +296,29 @@ export default function AppsLauncher({ open, onClose }) {
                   >
                     <div className="app-tile__icon">
                       {a.icon
-                        ? <img src={a.icon} alt="" draggable={false} />
+                        ? <img
+                            src={a.icon}
+                            alt=""
+                            draggable={false}
+                            onError={(e) => {
+                              // For Steam: header.jpg is missing on CDN for some appids
+                              // (betas, demos, region-locked). Fall back to library_600x900_2x.jpg,
+                              // then to capsule_184x69.jpg, then hide the broken img.
+                              const img = e.currentTarget;
+                              const id = a.steamAppId;
+                              if (a.source === 'steam' && id) {
+                                if (img.src.includes('header.jpg')) {
+                                  img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/library_600x900_2x.jpg`;
+                                  return;
+                                }
+                                if (img.src.includes('library_600x900_2x.jpg')) {
+                                  img.src = `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/capsule_184x69.jpg`;
+                                  return;
+                                }
+                              }
+                              img.style.display = 'none';
+                            }}
+                          />
                         : <div className="app-tile__icon-fallback">{a.name.slice(0, 1)}</div>}
                       <span className={`app-tile__src app-tile__src--${a.source}`}>
                         {a.source === 'steam' ? 'Steam' : 'App'}
