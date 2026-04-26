@@ -78,6 +78,9 @@ contextBridge.exposeInMainWorld('chinazes', {
     launch:  (id)    => ipcRenderer.invoke('apps:launch', id),
     foldersGet: ()   => ipcRenderer.invoke('apps:folders:get'),
     foldersSet: (a)  => ipcRenderer.invoke('apps:folders:set', a),
+    addManual: (payload) => ipcRenderer.invoke('apps:add-manual', payload),
+    remove:    (id)      => ipcRenderer.invoke('apps:remove', id),
+    pickFile:  ()        => ipcRenderer.invoke('apps:pick-file'),
     onScanProgress: (cb) => {
       const fn = (_e, p) => cb(p);
       ipcRenderer.on('apps:scan-progress', fn);

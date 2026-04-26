@@ -19,6 +19,7 @@ export default function AppsLauncher({ open, onClose }) {
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [contextMenu, setContextMenu] = useState(null); // { x, y, app }
+  const [dragFolderId, setDragFolderId] = useState(null);
   const wrapRef = useRef(null);
 
   useEffect(() => {
@@ -84,6 +85,55 @@ export default function AppsLauncher({ open, onClose }) {
     window.chinazes.apps.launch(appItem.id);
   }
 
+  async function addManual() {
+    const filePath = await window.chinazes.apps.pickFile();
+    if (!filePath) return;
+    const item = await window.chinazes.apps.addManual({ filePath });
+    if (!item) {
+      alert('Не удалось добавить файл');
+      return;
+    }
+    await refresh();
+    // If we're inside a custom folder, auto-add to it.
+    if (activeFolder !== '__all__') {
+      const next = folders.map((f) => f.id === activeFolder
+        ? { ...f, appIds: f.appIds.includes(item.id) ? f.appIds : [...f.appIds, item.id] }
+        : f);
+      persistFolders(next);
+    }
+  }
+
+  async function removeApp(appItem) {
+    if (!confirm(`Удалить «${appItem.name}» из лаунчера?`)) return;
+    await window.chinazes.apps.remove(appItem.id);
+    await refresh();
+  }
+
+  function onTileDragStart(e, appItem) {
+    e.dataTransfer.setData('application/x-chinazes-app', appItem.id);
+    e.dataTransfer.effectAllowed = 'copy';
+  }
+  function onFolderDragOver(e, folderId) {
+    if (folderId === '__all__') return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDragFolderId(folderId);
+  }
+  function onFolderDragLeave(e) {
+    setDragFolderId(null);
+  }
+  function onFolderDrop(e, folderId) {
+    e.preventDefault();
+    setDragFolderId(null);
+    if (folderId === '__all__') return;
+    const appId = e.dataTransfer.getData('application/x-chinazes-app');
+    if (!appId) return;
+    const next = folders.map((f) => f.id === folderId
+      ? { ...f, appIds: f.appIds.includes(appId) ? f.appIds : [...f.appIds, appId] }
+      : f);
+    persistFolders(next);
+  }
+
   const filtered = useMemo(() => {
     let list = apps;
     if (activeFolder !== '__all__') {
@@ -145,10 +195,15 @@ export default function AppsLauncher({ open, onClose }) {
               />
               <button
                 className="btn btn--ghost btn--small"
+                onClick={addManual}
+                title="Добавить приложение по пути"
+              >+ Добавить</button>
+              <button
+                className="btn btn--ghost btn--small"
                 onClick={rescan}
                 disabled={scanning}
-                title="Пересканировать ПК"
-              >{scanning ? '...' : '↻'}</button>
+                title="Пересканировать Steam"
+              >{scanning ? '...' : '↻ Steam'}</button>
               <button className="modal__close" onClick={onClose}>×</button>
             </header>
 
@@ -165,9 +220,13 @@ export default function AppsLauncher({ open, onClose }) {
                     key={f.id}
                     folder={f}
                     active={activeFolder === f.id}
+                    dragOver={dragFolderId === f.id}
                     onClick={() => setActiveFolder(f.id)}
                     count={f.appIds.length}
                     onDelete={() => deleteFolder(f.id)}
+                    onDragOver={(e) => onFolderDragOver(e, f.id)}
+                    onDragLeave={onFolderDragLeave}
+                    onDrop={(e) => onFolderDrop(e, f.id)}
                   />
                 ))}
                 {creatingFolder ? (
@@ -202,28 +261,34 @@ export default function AppsLauncher({ open, onClose }) {
                 )}
                 {!scanning && apps.length === 0 && (
                   <div className="apps-grid__empty">
-                    <p>Пока ничего не отсканировано.</p>
-                    <button className="btn btn--primary" onClick={rescan}>Сканировать ПК</button>
+                    <p>Пока пусто.</p>
+                    <p style={{ fontSize: 12, marginTop: 4 }}>Steam игры подгружаются автоматически. Остальные приложения добавляй вручную.</p>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+                      <button className="btn btn--primary" onClick={rescan}>↻ Сканировать Steam</button>
+                      <button className="btn btn--ghost" onClick={addManual}>+ Добавить файл</button>
+                    </div>
                   </div>
                 )}
                 {filtered.map((a) => (
                   <button
                     key={a.id}
                     className="app-tile"
+                    draggable
+                    onDragStart={(e) => onTileDragStart(e, a)}
                     onDoubleClick={() => launch(a)}
                     onClick={() => launch(a)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.clientX, y: e.clientY, app: a });
                     }}
-                    title={`${a.name}\n${a.path || a.steamAppId || ''}\nИсточник: ${a.source}`}
+                    title={`${a.name}\n${a.path || a.steamAppId || ''}\nИсточник: ${a.source}\n(перетащи в папку слева)`}
                   >
                     <div className="app-tile__icon">
                       {a.icon
                         ? <img src={a.icon} alt="" draggable={false} />
                         : <div className="app-tile__icon-fallback">{a.name.slice(0, 1)}</div>}
                       <span className={`app-tile__src app-tile__src--${a.source}`}>
-                        {a.source === 'steam' ? 'Steam' : a.source === 'registry' ? 'App' : 'Меню'}
+                        {a.source === 'steam' ? 'Steam' : 'App'}
                       </span>
                     </div>
                     <div className="app-tile__name">{a.name}</div>
@@ -250,6 +315,11 @@ export default function AppsLauncher({ open, onClose }) {
                 <button className="apps-ctx__item" onClick={() => { launch(contextMenu.app); setContextMenu(null); }}>
                   ▶ Запустить
                 </button>
+                {contextMenu.app.source === 'manual' && (
+                  <button className="apps-ctx__item" onClick={() => { removeApp(contextMenu.app); setContextMenu(null); }}>
+                    🗑 Удалить
+                  </button>
+                )}
                 <div className="apps-ctx__sep">Папки</div>
                 {folders.length === 0 && <div className="apps-ctx__hint">Создай папку слева</div>}
                 {folders.map((f) => {
@@ -273,9 +343,14 @@ export default function AppsLauncher({ open, onClose }) {
   );
 }
 
-function FolderItem({ folder, active, onClick, count, onDelete }) {
+function FolderItem({ folder, active, dragOver, onClick, count, onDelete, onDragOver, onDragLeave, onDrop }) {
   return (
-    <div className={`apps-folder ${active ? 'apps-folder--active' : ''}`}>
+    <div
+      className={`apps-folder ${active ? 'apps-folder--active' : ''} ${dragOver ? 'apps-folder--dragover' : ''}`}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
       <button className="apps-folder__btn" onClick={onClick}>
         <span className="apps-folder__name">{folder.name}</span>
         <span className="apps-folder__count">{count}</span>

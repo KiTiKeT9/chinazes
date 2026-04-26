@@ -7,7 +7,7 @@
 // Results + icons are persisted to userData/apps-cache.json so a fresh scan
 // only happens on demand.
 
-const { app, ipcMain, shell, nativeImage } = require('electron');
+const { app, ipcMain, shell, nativeImage, dialog, BrowserWindow } = require('electron');
 const { execFile, spawn } = require('child_process');
 const fs   = require('fs');
 const fsp  = fs.promises;
@@ -247,19 +247,19 @@ function dedupeByPath(arr) {
 
 async function scanAll(progressCb) {
   const send = (p) => { try { progressCb?.(p); } catch {} };
-  send({ phase: 'registry' });
-  const reg = await scanRegistryUninstall();
   send({ phase: 'steam' });
   const steam = await scanSteam();
-  send({ phase: 'startmenu' });
-  const start = await scanStartMenu();
 
-  const all = dedupeByPath([...steam, ...reg, ...start]);
+  // Preserve manual entries across rescans.
+  const prev = await loadCache();
+  const manuals = (prev?.apps || []).filter((a) => a.source === 'manual');
+
+  const all = dedupeByPath([...steam, ...manuals]);
 
   send({ phase: 'icons', total: all.length });
   let i = 0;
   for (const a of all) {
-    a.icon = await getIconForApp(a);
+    if (!a.icon) a.icon = await getIconForApp(a);
     i++;
     if (i % 10 === 0) send({ phase: 'icons', done: i, total: all.length });
   }
@@ -288,26 +288,68 @@ function launchApp(item) {
     shell.openExternal(`steam://rungameid/${item.steamAppId}`);
     return true;
   }
-  if (item.source === 'startmenu' && item.path) {
+  if (!item.path) return false;
+  if (!fs.existsSync(item.path)) return false;
+  // .lnk / .url -> shell handles them.
+  if (/\.(lnk|url)$/i.test(item.path)) {
     shell.openPath(item.path);
     return true;
   }
-  if (item.path && fs.existsSync(item.path)) {
-    try {
-      spawn(item.path, [], { detached: true, stdio: 'ignore', cwd: path.dirname(item.path) }).unref();
-      return true;
-    } catch {
-      shell.openPath(item.path);
-      return true;
-    }
+  // .exe / others -> spawn detached so we don't keep parenting it.
+  try {
+    spawn(item.path, [], { detached: true, stdio: 'ignore', cwd: path.dirname(item.path) }).unref();
+    return true;
+  } catch {
+    shell.openPath(item.path);
+    return true;
   }
-  return false;
+}
+
+async function addManualApp({ name, filePath }) {
+  if (!filePath) return null;
+  const cleanPath = filePath.replace(/^"|"$/g, '');
+  if (!fs.existsSync(cleanPath)) return null;
+  const guessedName = (name || path.basename(cleanPath).replace(/\.(exe|lnk|url|bat|cmd)$/i, '')).trim();
+  const item = {
+    id: 'manual:' + Buffer.from(cleanPath).toString('base64').slice(0, 32),
+    name: guessedName || 'App',
+    path: cleanPath,
+    source: 'manual',
+  };
+  item.icon = await getIconForApp(item);
+
+  const cur = (await loadCache()) || { apps: [], scannedAt: 0 };
+  // Replace if already exists (same path).
+  const apps = cur.apps.filter((a) => a.id !== item.id && a.path?.toLowerCase() !== cleanPath.toLowerCase());
+  apps.push(item);
+  await saveCache({ apps, scannedAt: cur.scannedAt || Date.now() });
+  return item;
+}
+
+async function removeApp(id) {
+  const cur = await loadCache();
+  if (!cur) return false;
+  const apps = cur.apps.filter((a) => a.id !== id);
+  await saveCache({ apps, scannedAt: cur.scannedAt });
+  // Also unlink any folders.
+  const folders = await loadFolders();
+  const next = folders.map((f) => ({ ...f, appIds: f.appIds.filter((x) => x !== id) }));
+  await saveFolders(next);
+  return true;
 }
 
 // -------------------- IPC --------------------
 function register() {
   ipcMain.handle('apps:list', async () => {
-    return (await loadCache()) || { apps: [], scannedAt: 0 };
+    const cur = (await loadCache()) || { apps: [], scannedAt: 0 };
+    // Migrate from v1.12.0: drop registry/startmenu entries (now Steam-only auto-scan).
+    const before = cur.apps.length;
+    const filtered = cur.apps.filter((a) => a.source === 'steam' || a.source === 'manual');
+    if (filtered.length !== before) {
+      await saveCache({ apps: filtered, scannedAt: cur.scannedAt });
+      return { apps: filtered, scannedAt: cur.scannedAt };
+    }
+    return cur;
   });
   ipcMain.handle('apps:scan', async (e) => {
     const apps = await scanAll((p) => { try { e.sender.send('apps:scan-progress', p); } catch {} });
@@ -322,6 +364,24 @@ function register() {
   });
   ipcMain.handle('apps:folders:get', async () => loadFolders());
   ipcMain.handle('apps:folders:set', async (_e, arr) => { await saveFolders(arr); return true; });
+
+  ipcMain.handle('apps:add-manual', async (e, payload) => {
+    return addManualApp(payload || {});
+  });
+  ipcMain.handle('apps:remove', async (_e, id) => removeApp(id));
+  ipcMain.handle('apps:pick-file', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Выбери исполняемый файл или ярлык',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Apps & Games', extensions: ['exe', 'lnk', 'url', 'bat', 'cmd'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    if (r.canceled || !r.filePaths?.[0]) return null;
+    return r.filePaths[0];
+  });
 }
 
 module.exports = { register };
