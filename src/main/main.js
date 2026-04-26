@@ -124,11 +124,40 @@ const WEBVIEW_PRELOAD = path.join(__dirname, 'webview-preload.js');
 // Electron's UA contains "Electron/<ver>" which Discord (and others) detect and
 // use to disable features like screen-sharing, native push, etc.
 const DEFAULT_CHROME_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
+
+// Chrome's client-hints headers (Sec-CH-UA*). Electron's default emits
+// "Chromium" + "Not A Brand" instead of "Google Chrome", which strict sites
+// (Spotify, VK, banking portals) treat as suspicious and trap in a redirect
+// loop. We rewrite these on every webview request to mimic real Chrome 135.
+const CH_UA       = '"Google Chrome";v="135", "Chromium";v="135", "Not.A/Brand";v="99"';
+const CH_UA_MOBILE = '?0';
+const CH_UA_PLAT   = '"Windows"';
 
 function suppressSecurityPrompts(ses) {
   // Apply Chrome-like UA *before* the first webview navigates.
   try { ses.setUserAgent(DEFAULT_CHROME_UA); } catch {}
+  // Rewrite client-hints headers so sites that look at Sec-CH-UA agree with the UA string.
+  try {
+    ses.webRequest.onBeforeSendHeaders((details, callback) => {
+      const h = details.requestHeaders || {};
+      if (h['sec-ch-ua'] || h['Sec-CH-UA']) {
+        h['sec-ch-ua'] = CH_UA;
+        h['Sec-CH-UA'] = CH_UA;
+      } else {
+        // Some sites only send these on certain requests; do not inject if absent.
+      }
+      if (h['sec-ch-ua-mobile'] || h['Sec-CH-UA-Mobile']) {
+        h['sec-ch-ua-mobile'] = CH_UA_MOBILE;
+        h['Sec-CH-UA-Mobile'] = CH_UA_MOBILE;
+      }
+      if (h['sec-ch-ua-platform'] || h['Sec-CH-UA-Platform']) {
+        h['sec-ch-ua-platform'] = CH_UA_PLAT;
+        h['Sec-CH-UA-Platform'] = CH_UA_PLAT;
+      }
+      callback({ requestHeaders: h });
+    });
+  } catch {}
   // Inject WebAuthn stub before any page JS runs.
   try {
     const existing = ses.getPreloads ? ses.getPreloads() : [];

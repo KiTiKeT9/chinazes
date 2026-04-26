@@ -117,16 +117,49 @@ function parseVDF(text) {
   return root;
 }
 
-async function scanSteam() {
-  const candidates = [
-    'C:\\Program Files (x86)\\Steam',
-    'C:\\Program Files\\Steam',
-    path.join(os.homedir(), 'Steam'),
+async function findSteamRoot() {
+  // 1) Registry — Steam writes its install path on every install/update.
+  const regKeys = [
+    'HKCU\\Software\\Valve\\Steam',
+    'HKLM\\Software\\WOW6432Node\\Valve\\Steam',
+    'HKLM\\Software\\Valve\\Steam',
   ];
-  let steamRoot = '';
-  for (const c of candidates) {
-    if (fs.existsSync(path.join(c, 'steam.exe'))) { steamRoot = c; break; }
+  for (const k of regKeys) {
+    const out = await regQuery(k);
+    if (!out) continue;
+    // Look for SteamPath or InstallPath REG_SZ.
+    const m = out.match(/\s+(?:SteamPath|InstallPath)\s+REG_SZ\s+(.+)/i);
+    if (m) {
+      const p = m[1].trim().replace(/\//g, '\\');
+      if (fs.existsSync(path.join(p, 'steam.exe'))) return p;
+    }
   }
+  // 2) Common install dirs across all drive letters (A:..Z:).
+  const subPaths = [
+    'Program Files (x86)\\Steam',
+    'Program Files\\Steam',
+    'Steam',
+    'Games\\Steam',
+    'SteamLibrary',
+  ];
+  for (let code = 'A'.charCodeAt(0); code <= 'Z'.charCodeAt(0); code++) {
+    const drive = String.fromCharCode(code) + ':\\';
+    if (!fs.existsSync(drive)) continue;
+    for (const sub of subPaths) {
+      const candidate = path.join(drive, sub);
+      try {
+        if (fs.existsSync(path.join(candidate, 'steam.exe'))) return candidate;
+      } catch {}
+    }
+  }
+  // 3) User profile fallback (legacy).
+  const home = path.join(os.homedir(), 'Steam');
+  if (fs.existsSync(path.join(home, 'steam.exe'))) return home;
+  return '';
+}
+
+async function scanSteam() {
+  const steamRoot = await findSteamRoot();
   if (!steamRoot) return [];
 
   // Library folders.

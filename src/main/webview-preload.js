@@ -54,7 +54,18 @@ const stub = `(() => {
       return e;
     };
     if (navigator.credentials) {
-      navigator.credentials.get    = () => Promise.reject(denyError());
+      const origGet = navigator.credentials.get?.bind(navigator.credentials);
+      navigator.credentials.get = (opts) => {
+        // Conditional mediation = passive autofill probe (VK QR, Google login,
+        // etc. silently call this to listen for passkey autofill). Rejecting
+        // it makes some sites break their auth flow. Return a never-resolving
+        // promise instead — the page treats this as "no passkey available".
+        if (opts && opts.mediation === 'conditional') {
+          return new Promise(() => {});
+        }
+        // Active passkey requests still get denied so Windows Hello UI never appears.
+        return Promise.reject(denyError());
+      };
       navigator.credentials.create = () => Promise.reject(denyError());
     }
     if (window.PublicKeyCredential) {

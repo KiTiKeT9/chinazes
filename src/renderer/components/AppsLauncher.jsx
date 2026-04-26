@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 // `apps.foldersSet`.
 
 const ALL_FOLDER = { id: '__all__', name: 'Все' };
+const STEAM_FOLDER_ID = '__steam__';
 
 export default function AppsLauncher({ open, onClose }) {
   const [apps, setApps] = useState([]);
@@ -136,7 +137,9 @@ export default function AppsLauncher({ open, onClose }) {
 
   const filtered = useMemo(() => {
     let list = apps;
-    if (activeFolder !== '__all__') {
+    if (activeFolder === STEAM_FOLDER_ID) {
+      list = list.filter((a) => a.source === 'steam');
+    } else if (activeFolder !== '__all__') {
       const f = folders.find((x) => x.id === activeFolder);
       const ids = new Set(f?.appIds || []);
       list = list.filter((a) => ids.has(a.id));
@@ -145,6 +148,8 @@ export default function AppsLauncher({ open, onClose }) {
     if (q) list = list.filter((a) => a.name.toLowerCase().includes(q));
     return [...list].sort((a, b) => a.name.localeCompare(b.name, 'ru'));
   }, [apps, folders, activeFolder, search]);
+
+  const steamCount = useMemo(() => apps.filter((a) => a.source === 'steam').length, [apps]);
 
   // Outside click + esc close.
   useEffect(() => {
@@ -214,6 +219,12 @@ export default function AppsLauncher({ open, onClose }) {
                   active={activeFolder === '__all__'}
                   onClick={() => setActiveFolder('__all__')}
                   count={apps.length}
+                />
+                <FolderItem
+                  folder={{ id: STEAM_FOLDER_ID, name: '🎮 Steam' }}
+                  active={activeFolder === STEAM_FOLDER_ID}
+                  onClick={() => setActiveFolder(STEAM_FOLDER_ID)}
+                  count={steamCount}
                 />
                 {folders.map((f) => (
                   <FolderItem
@@ -320,7 +331,7 @@ export default function AppsLauncher({ open, onClose }) {
                     🗑 Удалить
                   </button>
                 )}
-                {activeFolder !== '__all__' && (() => {
+                {activeFolder !== '__all__' && activeFolder !== STEAM_FOLDER_ID && (() => {
                   const f = folders.find((x) => x.id === activeFolder);
                   if (!f || !f.appIds.includes(contextMenu.app.id)) return null;
                   return (
