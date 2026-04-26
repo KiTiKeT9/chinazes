@@ -76,19 +76,11 @@ export const SERVICES = [
     gradient: 'linear-gradient(135deg, #9146FF 0%, #6441A5 100%)',
     icon: 'twitch',
   },
-  {
-    id: 'vk',
-    name: 'VK',
-    // id.vk.com is VK's auth domain. Logged-out: full QR login page + altern.
-    // login methods. Logged-in: redirects to vk.com/feed automatically. The
-    // bare vk.com/ landing only shows a stripped widget that doesn't complete
-    // QR auth (image-only "scanned" feedback, no actual session swap).
-    url: 'https://id.vk.com/',
-    partition: 'persist:vk',
-    accent: '#0077FF',
-    gradient: 'linear-gradient(135deg, #4A76A8 0%, #0077FF 100%)',
-    icon: 'vk',
-  },
+  // VK removed in v1.15.6 — VK's auth flow is incompatible with Electron
+  // webviews (id.vk.com QR login refuses to complete the session swap even
+  // with Chrome 135 spoofing + Sec-CH-UA fixes). Users who need VK can open
+  // it in their system browser via the custom-service feature or just search
+  // "vk" in Google. Removing avoids confusing broken-out-of-the-box state.
   {
     id: 'instagram',
     name: 'Instagram',
