@@ -75,7 +75,9 @@ function ServiceTab({ svc, isActive, isSecondary, onSelect, dragging, setDraggin
           }}
           transition={{ duration: 0.25 }}
         >
-          <BrandIcon id={svc.icon} />
+          {svc.iconUrl
+            ? <img src={svc.iconUrl} alt="" className="tab__favicon" draggable={false} />
+            : <BrandIcon id={svc.icon} />}
         </motion.span>
 
         <span className="tab__tooltip">{svc.name}</span>

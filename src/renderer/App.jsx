@@ -6,9 +6,9 @@ import TabbedServiceView from './components/TabbedServiceView.jsx';
 import SettingsModal from './components/SettingsModal.jsx';
 import NotesPanel from './components/NotesPanel.jsx';
 import UpdateToast from './components/UpdateToast.jsx';
-import { SERVICES } from './services.js';
 import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
+import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
 
 const ORDER_KEY = 'chinazes:sidebar-order';
 const SPLIT_RATIO_KEY = 'chinazes:split-ratio';
@@ -18,23 +18,33 @@ function loadSplitRatio() {
   return Number.isFinite(v) && v > 0.1 && v < 0.9 ? v : 0.5;
 }
 
-function loadOrder() {
+function loadOrder(allServices) {
   try {
     const saved = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]');
     if (!Array.isArray(saved)) throw new Error();
     // Keep only ids that still exist + append any new services at the end.
-    const known = new Set(SERVICES.map((s) => s.id));
+    const known = new Set(allServices.map((s) => s.id));
     const filtered = saved.filter((id) => known.has(id));
-    for (const s of SERVICES) if (!filtered.includes(s.id)) filtered.push(s.id);
+    for (const s of allServices) if (!filtered.includes(s.id)) filtered.push(s.id);
     return filtered;
   } catch {
-    return SERVICES.map((s) => s.id);
+    return allServices.map((s) => s.id);
   }
 }
 
 export default function App() {
-  const [order, setOrder] = useState(loadOrder);
-  const [active, setActive] = useState(() => loadOrder()[0]);
+  // Service catalog is dynamic now: built-ins + user-added customs, with hidden filter.
+  // `servicesVersion` bumps whenever Settings modifies the catalog so we re-resolve.
+  const [servicesVersion, setServicesVersion] = useState(0);
+  const allServices = useMemo(resolveServices, [servicesVersion]);
+  const [hiddenIds, setHiddenIds] = useState(loadHidden);
+  const sidebarServices = useMemo(
+    () => allServices.filter((s) => !hiddenIds.has(s.id)),
+    [allServices, hiddenIds]
+  );
+
+  const [order, setOrder] = useState(() => loadOrder(allServices));
+  const [active, setActive] = useState(() => loadOrder(allServices)[0]);
   const [secondary, setSecondary] = useState(null); // service id for split-screen right pane
   const [splitRatio, setSplitRatio] = useState(loadSplitRatio);
   const [resizing, setResizing] = useState(false);
@@ -69,18 +79,58 @@ export default function App() {
     return () => off?.();
   }, []);
 
+  // Re-derive `order` whenever new services appear or hidden state changes.
+  useEffect(() => {
+    setOrder((cur) => {
+      const known = new Set(allServices.map((s) => s.id));
+      const filtered = cur.filter((id) => known.has(id));
+      for (const s of allServices) if (!filtered.includes(s.id)) filtered.push(s.id);
+      return filtered;
+    });
+  }, [allServices]);
+
   const orderedServices = useMemo(
-    () => order.map((id) => SERVICES.find((s) => s.id === id)).filter(Boolean),
-    [order]
+    () => order
+      .map((id) => sidebarServices.find((s) => s.id === id))
+      .filter(Boolean),
+    [order, sidebarServices]
   );
   const activeSvc = useMemo(
-    () => SERVICES.find((s) => s.id === active) || orderedServices[0],
-    [active, orderedServices]
+    () => allServices.find((s) => s.id === active) || orderedServices[0] || allServices[0],
+    [active, allServices, orderedServices]
   );
   const secondarySvc = useMemo(
-    () => (secondary ? SERVICES.find((s) => s.id === secondary) : null),
-    [secondary]
+    () => (secondary ? allServices.find((s) => s.id === secondary) : null),
+    [secondary, allServices]
   );
+
+  // If the active service got hidden / removed, fall back to first visible.
+  useEffect(() => {
+    if (!sidebarServices.length) return;
+    if (!sidebarServices.find((s) => s.id === active)) {
+      setActive(sidebarServices[0].id);
+    }
+    if (secondary && !sidebarServices.find((s) => s.id === secondary)) {
+      setSecondary(null);
+    }
+  }, [sidebarServices, active, secondary]);
+
+  const onToggleHidden = useCallback((id) => {
+    setHiddenIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      saveHidden(next);
+      return next;
+    });
+  }, []);
+  const onAddCustom = useCallback((entry) => {
+    addCustomService(entry);
+    setServicesVersion((v) => v + 1);
+  }, []);
+  const onRemoveCustom = useCallback((id) => {
+    removeCustomService(id);
+    setServicesVersion((v) => v + 1);
+  }, []);
 
   const reloadActive = useCallback(() => {
     const wv = webviewRefs.current[active];
@@ -90,9 +140,10 @@ export default function App() {
 
   const onSelectService = useCallback((id, opts = {}) => {
     if (opts.split) {
-      // Toggle as secondary; if same as active, ignore; if same as current secondary, close.
-      if (id === active) return;
-      setSecondary((cur) => (cur === id ? null : id));
+      // Toggle as secondary. Allow same id as the primary — two independent
+      // panes of the same service (different webview ref keys, shared
+      // partition/session so login persists).
+      setSecondary((cur) => (cur === id && cur !== active ? null : id));
     } else {
       // If clicked id is currently secondary, swap them.
       if (id === secondary) {
@@ -161,7 +212,7 @@ export default function App() {
             className="pane pane--primary"
             style={secondarySvc ? { flex: `0 0 calc(${splitRatio * 100}% - 4px)` } : undefined}
           >
-            {SERVICES.map((svc) => {
+            {allServices.map((svc) => {
               const View = svc.tabbed ? TabbedServiceView : ServiceView;
               return (
                 <View
@@ -187,7 +238,7 @@ export default function App() {
                   <button className="pane__close" onClick={closeSecondary} aria-label="Close pane">×</button>
                 </div>
                 <div className="pane__body">
-                  {SERVICES.map((svc) => {
+                  {allServices.map((svc) => {
                     if (svc.id !== secondary) return null;
                     const View = svc.tabbed ? TabbedServiceView : ServiceView;
                     return (
@@ -209,6 +260,11 @@ export default function App() {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         proxyState={proxyState}
+        allServices={allServices}
+        hiddenIds={hiddenIds}
+        onToggleHidden={onToggleHidden}
+        onAddCustom={onAddCustom}
+        onRemoveCustom={onRemoveCustom}
       />
       <NotesPanel open={notesOpen} onClose={() => setNotesOpen(false)} />
       <UpdateToast />

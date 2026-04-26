@@ -67,4 +67,13 @@ export const SERVICES = [
     gradient: 'linear-gradient(135deg, #4285F4 0%, #EA4335 100%)',
     icon: 'gmail',
   },
+  {
+    id: 'twitch',
+    name: 'Twitch',
+    url: 'https://www.twitch.tv/',
+    partition: 'persist:twitch',
+    accent: '#9146FF',
+    gradient: 'linear-gradient(135deg, #9146FF 0%, #6441A5 100%)',
+    icon: 'twitch',
+  },
 ];

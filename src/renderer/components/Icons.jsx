@@ -105,6 +105,14 @@ export function ShieldIcon(props) {
   );
 }
 
+export function TwitchIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" {...props}>
+      <path d="M4 2 2 6v14h5v3h3l3-3h4l5-5V2H4Zm16 11-3 3h-5l-3 3v-3H6V4h14v9ZM11 8h2v6h-2V8Zm5 0h2v6h-2V8Z"/>
+    </svg>
+  );
+}
+
 export function BrandIcon({ id, ...props }) {
   switch (id) {
     case 'telegram': return <TelegramIcon {...props} />;
@@ -114,6 +122,7 @@ export function BrandIcon({ id, ...props }) {
     case 'steam':    return <SteamIcon {...props} />;
     case 'google':   return <GoogleIcon {...props} />;
     case 'gmail':    return <GmailIcon {...props} />;
+    case 'twitch':   return <TwitchIcon {...props} />;
     default:         return null;
   }
 }

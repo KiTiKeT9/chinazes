@@ -956,15 +956,89 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   color: var(--accent);
 }
 
+.tab__favicon {
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  object-fit: cover;
+  display: block;
+}
+
+/* ---------- Services tab in Settings ---------- */
+.svc-list { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.svc-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.svc-row__icon {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.svc-row__icon img { width: 20px; height: 20px; border-radius: 5px; object-fit: cover; }
+.svc-row__icon svg { width: 18px; height: 18px; }
+.svc-row__meta { flex: 1; min-width: 0; }
+.svc-row__name { font-size: 13px; font-weight: 500; color: var(--fg); }
+.svc-row__url {
+  font-size: 11px;
+  color: var(--fg-mute);
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.switch { position: relative; display: inline-block; width: 36px; height: 20px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch__slider {
+  position: absolute; cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(255,255,255,0.12);
+  border-radius: 20px;
+  transition: background 0.18s;
+}
+.switch__slider::before {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.18s;
+}
+.switch input:checked + .switch__slider { background: var(--accent); }
+.switch input:checked + .switch__slider::before { transform: translateX(16px); }
+
+.svc-add { display: grid; grid-template-columns: 1fr 1.4fr auto; gap: 8px; }
+.svc-add .input { padding: 8px 10px; }
+.btn--small { padding: 4px 8px; font-size: 14px; }
+.modal__subtitle {
+  margin: 6px 0 -4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--fg-dim);
+  font-weight: 600;
+}
+
 /* ---------- Notes panel (right drawer) ---------- */
+/* Backdrop is non-blocking so the user can keep interacting with the webview
+   on the left (drag images from chats, click links etc.). The panel itself
+   re-enables pointer events on its own area. Outside-click closing is handled
+   by the renderer JS via document-level listener. */
 .notes-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background: transparent;
   z-index: 90;
   display: flex;
   justify-content: flex-end;
+  pointer-events: none;
 }
+.notes-backdrop .notes-panel { pointer-events: auto; }
 .notes-panel {
   width: 460px;
   max-width: calc(100vw - 60px);

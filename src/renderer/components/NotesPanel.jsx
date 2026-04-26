@@ -19,6 +19,19 @@ export default function NotesPanel({ open, onClose }) {
 
   useEffect(() => { if (open) reload(); }, [open, reload]);
 
+  // Close on outside click. Backdrop is pointer-events:none (so chats below stay
+  // interactive), so we can't rely on backdrop onClick — listen at the document
+  // level and check whether the target is inside the panel.
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e) => {
+      const panel = document.querySelector('.notes-panel');
+      if (panel && !panel.contains(e.target)) onClose?.();
+    };
+    document.addEventListener('mousedown', onDocMouseDown, true);
+    return () => document.removeEventListener('mousedown', onDocMouseDown, true);
+  }, [open, onClose]);
+
   // Listen for clipboard paste of images while panel is open.
   useEffect(() => {
     if (!open) return;

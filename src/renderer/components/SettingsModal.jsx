@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShieldIcon } from './Icons.jsx';
+import { ShieldIcon, BrandIcon } from './Icons.jsx';
 import { THEMES, getStoredTheme, setStoredTheme } from '../themes.js';
 import { UA_PRESETS, getStoredUA, setStoredUA } from '../user-agents.js';
 import { FREE_POOLS } from '../free-pools.js';
@@ -14,8 +14,20 @@ const ENGINES = [
   { id: 'xray', name: 'Xray / v2ray',            desc: 'VLESS/VMess/Trojan/SS/Hysteria2 + подписки. Включи фильтр «Только CDN (WS+TLS)» — TCP 443 TLS, лучше работает в РФ.' },
 ];
 
-export default function SettingsModal({ open, onClose, proxyState }) {
-  const [tab, setTab] = useState('connection'); // 'connection' | 'appearance'
+export default function SettingsModal({
+  open,
+  onClose,
+  proxyState,
+  allServices = [],
+  hiddenIds = new Set(),
+  onToggleHidden = () => {},
+  onAddCustom = () => {},
+  onRemoveCustom = () => {},
+}) {
+  const [tab, setTab] = useState('connection'); // 'connection' | 'appearance' | 'services'
+  const [newSvcName, setNewSvcName] = useState('');
+  const [newSvcUrl, setNewSvcUrl] = useState('');
+  const [svcError, setSvcError] = useState('');
   const [engine, setEngine] = useState('warp');
   const [config, setConfig] = useState(null);
   const [link, setLink] = useState('');
@@ -30,6 +42,22 @@ export default function SettingsModal({ open, onClose, proxyState }) {
   const [countryFilter, setCountryFilter] = useState('all');
   const [showSafetyModal, setShowSafetyModal] = useState(false);
   const [pendingPoolUrl, setPendingPoolUrl] = useState('');
+
+  function tryAddCustom() {
+    const raw = newSvcUrl.trim();
+    if (!raw) return;
+    let url = raw;
+    if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+    try {
+      const u = new URL(url);
+      onAddCustom({ name: newSvcName.trim() || u.hostname, url });
+      setNewSvcUrl('');
+      setNewSvcName('');
+      setSvcError('');
+    } catch {
+      setSvcError('Неверный URL. Пример: https://example.com');
+    }
+  }
 
   async function onPickUA(id) {
     setUaId(id);
@@ -261,10 +289,84 @@ export default function SettingsModal({ open, onClose, proxyState }) {
                 onClick={() => setTab('connection')}
               >Connection</button>
               <button
+                className={`modal__seg-btn ${tab === 'services' ? 'modal__seg-btn--active' : ''}`}
+                onClick={() => setTab('services')}
+              >Services</button>
+              <button
                 className={`modal__seg-btn ${tab === 'appearance' ? 'modal__seg-btn--active' : ''}`}
                 onClick={() => setTab('appearance')}
               >Appearance</button>
             </div>
+
+            {tab === 'services' && (
+              <section className="modal__body">
+                <p className="modal__hint">
+                  Включи/выключи иконки в боковой панели или добавь свой сайт. Можно
+                  перетаскивать иконки в сайдбаре, чтобы менять порядок.
+                </p>
+
+                <div className="svc-list">
+                  {allServices.map((svc) => {
+                    const enabled = !hiddenIds.has(svc.id);
+                    return (
+                      <div key={svc.id} className="svc-row">
+                        <div className="svc-row__icon" style={{ '--accent': svc.accent }}>
+                          {svc.iconUrl
+                            ? <img src={svc.iconUrl} alt="" draggable={false} />
+                            : <BrandIcon id={svc.icon} />}
+                        </div>
+                        <div className="svc-row__meta">
+                          <div className="svc-row__name">{svc.name}{svc.custom ? ' · custom' : ''}</div>
+                          <div className="svc-row__url">{svc.url}</div>
+                        </div>
+                        <label className="switch" title={enabled ? 'Скрыть' : 'Показать'}>
+                          <input
+                            type="checkbox"
+                            checked={enabled}
+                            onChange={() => onToggleHidden(svc.id)}
+                          />
+                          <span className="switch__slider" />
+                        </label>
+                        {svc.custom && (
+                          <button
+                            className="btn btn--ghost btn--small"
+                            onClick={() => onRemoveCustom(svc.id)}
+                            title="Удалить"
+                          >×</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <h4 className="modal__subtitle">Добавить сайт</h4>
+                <div className="svc-add">
+                  <input
+                    className="input"
+                    placeholder="Название (необязательно)"
+                    value={newSvcName}
+                    onChange={(e) => setNewSvcName(e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    placeholder="https://example.com"
+                    value={newSvcUrl}
+                    onChange={(e) => setNewSvcUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') tryAddCustom(); }}
+                  />
+                  <button
+                    className="btn btn--primary"
+                    onClick={tryAddCustom}
+                    disabled={!newSvcUrl.trim()}
+                  >Добавить</button>
+                </div>
+                {svcError && <p className="modal__hint" style={{ color: '#ff7a7a' }}>{svcError}</p>}
+                <p className="modal__hint muted">
+                  Иконка будет загружена автоматически (favicon сайта). Каждый сайт получает
+                  отдельную сессию — логины не пересекаются.
+                </p>
+              </section>
+            )}
 
             {tab === 'appearance' && (
               <section className="modal__body">

@@ -14,6 +14,10 @@ function loadTabs(service) {
         .filter((t) => t && typeof t.url === 'string' && /^https?:\/\//.test(t.url))
         .map((t) => ({
           id: nextTabId(),
+          // initialUrl is what the webview src is bound to. It NEVER changes after
+          // mount — otherwise <webview src=...> would force a reload on every
+          // navigation (e.g. YouTube end-of-video / Shorts swipe).
+          initialUrl: t.url,
           url: t.url,
           title: t.title || service.name,
           favicon: t.favicon || null,
@@ -24,7 +28,13 @@ function loadTabs(service) {
       }
     }
   } catch {}
-  const t = { id: nextTabId(), url: service.url, title: service.name, favicon: null };
+  const t = {
+    id: nextTabId(),
+    initialUrl: service.url,
+    url: service.url,
+    title: service.name,
+    favicon: null,
+  };
   return { tabs: [t], activeId: t.id };
 }
 
@@ -54,7 +64,8 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
   }, [activeId, registerRef]);
 
   const addTab = useCallback((url) => {
-    const t = { id: nextTabId(), url: url || service.url, title: 'New Tab', favicon: null };
+    const u = url || service.url;
+    const t = { id: nextTabId(), initialUrl: u, url: u, title: 'New Tab', favicon: null };
     setTabs((arr) => [...arr, t]);
     setActiveId(t.id);
   }, [service.url]);
@@ -160,7 +171,7 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
           <webview
             key={t.id}
             ref={(el) => setupWebview(t.id, el)}
-            src={t.url}
+            src={t.initialUrl}
             partition={service.partition}
             allowpopups="true"
             webpreferences="autoplayPolicy=document-user-activation-required"

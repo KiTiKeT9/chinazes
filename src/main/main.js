@@ -50,6 +50,7 @@ const SERVICE_PARTITIONS = [
   'persist:steam',
   'persist:google',
   'persist:gmail',
+  'persist:twitch',
 ];
 
 function createWindow() {
@@ -143,6 +144,11 @@ function suppressSecurityPrompts(ses) {
 }
 
 app.whenReady().then(async () => {
+  // Windows: required for native Notifications to render with the correct app
+  // name + icon. Without this, Telegram/Discord/YouTube push notifications
+  // either don't appear or show as "Electron".
+  try { app.setAppUserModelId('com.chinazes.app'); } catch {}
+
   // Force dark color-scheme so embedded sites that respect prefers-color-scheme
   // (Gmail, Discord web, YouTube etc.) render in dark by default.
   try { nativeTheme.themeSource = 'dark'; } catch {}
