@@ -95,14 +95,26 @@ async function scanRegistryUninstall() {
 }
 
 // -------------------- Steam --------------------
+function unescapeVDF(s) {
+  // VDF stores paths as "D:\\SteamLibrary" — literal double backslash that
+  // must be unescaped to a single backslash before fs APIs accept the path.
+  // Also handles \" and \n / \t escapes that VDF supports.
+  return s.replace(/\\(.)/g, (_, c) => {
+    if (c === 'n') return '\n';
+    if (c === 't') return '\t';
+    if (c === 'r') return '\r';
+    return c; // \\ → \,  \" → "
+  });
+}
+
 function parseVDF(text) {
   // Tiny VDF parser — handles nested {} and "key" "value" pairs.
   const root = {};
   const stack = [root];
-  const re = /"([^"]*)"\s*("([^"]*)"|\{|\})/g;
+  const re = /"([^"\\]*(?:\\.[^"\\]*)*)"\s*("([^"\\]*(?:\\.[^"\\]*)*)"|\{|\})/g;
   let m;
   while ((m = re.exec(text)) !== null) {
-    const key = m[1];
+    const key = unescapeVDF(m[1]);
     const val = m[2];
     const top = stack[stack.length - 1];
     if (val === '{') {
@@ -111,7 +123,7 @@ function parseVDF(text) {
     } else if (val === '}') {
       stack.pop();
     } else {
-      top[key] = m[3];
+      top[key] = unescapeVDF(m[3]);
     }
   }
   return root;
