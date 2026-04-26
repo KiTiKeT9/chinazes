@@ -1131,6 +1131,31 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   color: var(--fg);
 }
 
+/* AI settings */
+.ai-providers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.ai-provider {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--fg);
+  transition: all 0.15s;
+}
+.ai-provider:hover { border-color: rgba(255,255,255,0.2); }
+.ai-provider--active {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(126, 142, 251, 0.1), transparent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.ai-provider__name { font-size: 13px; font-weight: 600; }
+.ai-provider__model { font-size: 11px; color: var(--fg-mute); margin-top: 2px; font-family: ui-monospace, monospace; }
+.ai-test-row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+.ai-test-msg { font-size: 12px; }
+.ai-test-msg--ok { color: #1DB954; }
+.ai-test-msg--err { color: #ff5a6e; }
+
 /* Plugin store */
 .plugin-row .svc-row__name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .plugin-badge {

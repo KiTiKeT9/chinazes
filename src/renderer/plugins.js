@@ -146,6 +146,191 @@ export const BUILTIN_PLUGINS = [
     `,
   },
   {
+    id: 'global-ai-ask',
+    name: 'Глобально · спросить AI',
+    description: 'Выдели текст → кнопка ✨ AI: меню «Объяснить / Перевести / Суммаризировать / Свой запрос». Требует настроенного AI в Settings → AI.',
+    target: '*',
+    css: `
+      .__chinazes-ai-btn {
+        position: absolute; z-index: 999998;
+        background: linear-gradient(135deg, #7e8efb 0%, #b96fff 100%);
+        color: #fff; font: 600 12px/1 system-ui, sans-serif;
+        padding: 6px 10px; border: none; border-radius: 8px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.4); cursor: pointer;
+      }
+      .__chinazes-ai-btn:hover { transform: translateY(-1px); }
+      .__chinazes-ai-popup {
+        position: absolute; z-index: 999999;
+        width: 380px; max-height: 60vh;
+        background: #1a1a26; color: #e6e8ff;
+        border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+        box-shadow: 0 14px 50px rgba(0,0,0,0.7);
+        display: flex; flex-direction: column;
+        font: 13px/1.45 system-ui, sans-serif;
+      }
+      .__chinazes-ai-popup__head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      .__chinazes-ai-popup__title { font-weight: 600; font-size: 12px; color: #b1bfff; }
+      .__chinazes-ai-popup__close { cursor: pointer; opacity: 0.6; font-size: 18px; line-height: 1; }
+      .__chinazes-ai-popup__close:hover { opacity: 1; }
+      .__chinazes-ai-popup__actions {
+        display: flex; gap: 6px; padding: 10px 12px; flex-wrap: wrap;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+      }
+      .__chinazes-ai-act {
+        background: rgba(255,255,255,0.06); color: #fff;
+        border: 1px solid rgba(255,255,255,0.08);
+        padding: 5px 10px; border-radius: 6px; cursor: pointer;
+        font: 500 11px/1 system-ui, sans-serif;
+      }
+      .__chinazes-ai-act:hover { background: rgba(255,255,255,0.12); }
+      .__chinazes-ai-popup__body {
+        padding: 10px 12px; overflow-y: auto; flex: 1;
+        white-space: pre-wrap; word-break: break-word;
+        font-size: 13px; line-height: 1.5;
+      }
+      .__chinazes-ai-popup__body--busy::after {
+        content: '⏳'; display: inline-block;
+        animation: __chinazesAiPulse 1s infinite;
+      }
+      @keyframes __chinazesAiPulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+      .__chinazes-ai-popup__custom {
+        display: flex; gap: 6px; padding: 10px 12px;
+        border-top: 1px solid rgba(255,255,255,0.08);
+      }
+      .__chinazes-ai-popup__custom input {
+        flex: 1; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 6px; padding: 6px 8px; color: #fff; font: 12px system-ui;
+      }
+      .__chinazes-ai-popup__custom button {
+        background: linear-gradient(135deg, #7e8efb, #b96fff); color: #fff;
+        border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer;
+        font: 600 11px/1 system-ui;
+      }
+    `,
+    js: `
+      (function () {
+        if (window.__chinazesAiInstalled) return;
+        window.__chinazesAiInstalled = true;
+
+        let btn = null, popup = null;
+
+        function clear() {
+          if (btn) { btn.remove(); btn = null; }
+          if (popup) { popup.remove(); popup = null; }
+        }
+
+        async function ask(text, instruction) {
+          if (!window.chinazesGuest || !window.chinazesGuest.ai) {
+            return { reply: 'Bridge chinazesGuest.ai не доступен.' };
+          }
+          const messages = [
+            { role: 'system', content: 'Ты помощник внутри браузера. Отвечай кратко и по делу на языке пользователя.' },
+            { role: 'user', content: instruction + '\\n\\n---\\n' + text },
+          ];
+          try {
+            return await window.chinazesGuest.ai.chat({ messages });
+          } catch (e) {
+            return { reply: 'Ошибка: ' + (e?.message || String(e)) + '\\n\\nНастрой провайдера в Settings → AI.' };
+          }
+        }
+
+        function openPopup(text, range) {
+          if (popup) popup.remove();
+          popup = document.createElement('div');
+          popup.className = '__chinazes-ai-popup';
+          popup.style.left = (window.scrollX + range.left) + 'px';
+          popup.style.top = (window.scrollY + range.bottom + 8) + 'px';
+          popup.innerHTML = ''
+            + '<div class="__chinazes-ai-popup__head">'
+            +   '<span class="__chinazes-ai-popup__title">✨ AI</span>'
+            +   '<span class="__chinazes-ai-popup__close">×</span>'
+            + '</div>'
+            + '<div class="__chinazes-ai-popup__actions">'
+            +   '<button class="__chinazes-ai-act" data-act="explain">Объяснить</button>'
+            +   '<button class="__chinazes-ai-act" data-act="translate">Перевести</button>'
+            +   '<button class="__chinazes-ai-act" data-act="summarize">Суммаризировать</button>'
+            +   '<button class="__chinazes-ai-act" data-act="rewrite">Переписать</button>'
+            + '</div>'
+            + '<div class="__chinazes-ai-popup__body">Выбери действие или введи свой запрос ниже.</div>'
+            + '<form class="__chinazes-ai-popup__custom">'
+            +   '<input placeholder="Свой запрос..." />'
+            +   '<button type="submit">→</button>'
+            + '</form>';
+
+          const body = popup.querySelector('.__chinazes-ai-popup__body');
+          const setBusy = (b) => body.classList.toggle('__chinazes-ai-popup__body--busy', !!b);
+
+          async function run(instruction) {
+            setBusy(true);
+            body.textContent = 'Думаю...';
+            const r = await ask(text, instruction);
+            setBusy(false);
+            body.textContent = r.reply || '(пусто)';
+          }
+
+          popup.querySelector('.__chinazes-ai-popup__close').onclick = clear;
+          popup.querySelectorAll('.__chinazes-ai-act').forEach((b) => {
+            b.onclick = () => {
+              const act = b.dataset.act;
+              const map = {
+                explain: 'Объясни простыми словами:',
+                translate: 'Переведи на русский (или с русского на английский если уже русский):',
+                summarize: 'Суммаризируй кратко в 2-3 предложениях:',
+                rewrite: 'Перепиши лучше, сохранив смысл:',
+              };
+              run(map[act]);
+            };
+          });
+          const form = popup.querySelector('.__chinazes-ai-popup__custom');
+          form.onsubmit = (ev) => {
+            ev.preventDefault();
+            const q = form.querySelector('input').value.trim();
+            if (q) run(q + ':');
+          };
+
+          document.body.appendChild(popup);
+        }
+
+        document.addEventListener('mouseup', () => {
+          setTimeout(() => {
+            const sel = window.getSelection();
+            const text = sel ? sel.toString().trim() : '';
+            if (!text || text.length < 3) { clear(); return; }
+            if (popup) return;
+            if (btn) btn.remove();
+            const range = sel.getRangeAt(0).getBoundingClientRect();
+            btn = document.createElement('button');
+            btn.className = '__chinazes-ai-btn';
+            btn.textContent = '✨ AI';
+            btn.style.left = (window.scrollX + range.right + 6) + 'px';
+            btn.style.top = (window.scrollY + range.top - 30) + 'px';
+            btn.onclick = (ev) => {
+              ev.stopPropagation();
+              ev.preventDefault();
+              if (btn) { btn.remove(); btn = null; }
+              openPopup(text, range);
+            };
+            document.body.appendChild(btn);
+          }, 0);
+        });
+
+        document.addEventListener('mousedown', (e) => {
+          if (e.target.closest && (
+            e.target.closest('.__chinazes-ai-btn') ||
+            e.target.closest('.__chinazes-ai-popup')
+          )) return;
+          clear();
+        }, true);
+      })();
+    `,
+  },
+  {
     id: 'global-translator',
     name: 'Глобально · переводчик',
     description: 'Выдели текст на любом сайте → нажми кнопку «Перевести». Использует Google Translate без ключа.',

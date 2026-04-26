@@ -25,7 +25,42 @@ export default function SettingsModal({
   onAddCustom = () => {},
   onRemoveCustom = () => {},
 }) {
-  const [tab, setTab] = useState('connection'); // 'connection' | 'appearance' | 'services' | 'plugins'
+  const [tab, setTab] = useState('connection'); // 'connection' | 'appearance' | 'services' | 'plugins' | 'ai'
+
+  // AI config state
+  const [aiProviders, setAiProviders] = useState({});
+  const [aiCfg, setAiCfg] = useState({ provider: 'groq', apiKey: '', model: '' });
+  const [aiTestStatus, setAiTestStatus] = useState(''); // '' | 'busy' | 'ok' | 'err'
+  const [aiTestMsg, setAiTestMsg] = useState('');
+  useEffect(() => {
+    if (!open) return;
+    (async () => {
+      try {
+        const provs = await window.chinazes.ai.providers();
+        setAiProviders(provs);
+        const full = await window.chinazes.ai.getFull();
+        setAiCfg({ provider: full.provider || 'groq', apiKey: full.apiKey || '', model: full.model || '' });
+      } catch (e) { console.error(e); }
+    })();
+  }, [open]);
+  async function persistAi(patch) {
+    const next = { ...aiCfg, ...patch };
+    setAiCfg(next);
+    await window.chinazes.ai.setConfig(next);
+  }
+  async function testAi() {
+    setAiTestStatus('busy'); setAiTestMsg('');
+    try {
+      const r = await window.chinazes.ai.chat({
+        messages: [{ role: 'user', content: 'Say "ok" in one word.' }],
+      });
+      setAiTestStatus('ok');
+      setAiTestMsg(`✓ ${r.reply.slice(0, 80)}`);
+    } catch (e) {
+      setAiTestStatus('err');
+      setAiTestMsg(e.message || String(e));
+    }
+  }
   const [newSvcName, setNewSvcName] = useState('');
   const [newSvcUrl, setNewSvcUrl] = useState('');
   const [svcError, setSvcError] = useState('');
@@ -313,10 +348,84 @@ export default function SettingsModal({
                 onClick={() => setTab('plugins')}
               >Plugins</button>
               <button
+                className={`modal__seg-btn ${tab === 'ai' ? 'modal__seg-btn--active' : ''}`}
+                onClick={() => setTab('ai')}
+              >AI</button>
+              <button
                 className={`modal__seg-btn ${tab === 'appearance' ? 'modal__seg-btn--active' : ''}`}
                 onClick={() => setTab('appearance')}
               >Appearance</button>
             </div>
+
+            {tab === 'ai' && (
+              <section className="modal__body">
+                <p className="modal__hint">
+                  Подключи AI-провайдера для встроенной функции «Спросить AI» (выдели текст
+                  на любом сайте — получи объяснение, перевод, суммаризацию). Ключ хранится
+                  локально в <code>userData/ai-config.json</code>.
+                </p>
+
+                <h4 className="modal__subtitle">Провайдер</h4>
+                <div className="ai-providers">
+                  {Object.entries(aiProviders).map(([id, info]) => (
+                    <button
+                      key={id}
+                      className={`ai-provider ${aiCfg.provider === id ? 'ai-provider--active' : ''}`}
+                      onClick={() => persistAi({ provider: id, model: info.defaultModel })}
+                    >
+                      <div className="ai-provider__name">{info.label}</div>
+                      <div className="ai-provider__model">{info.defaultModel}</div>
+                    </button>
+                  ))}
+                </div>
+
+                <h4 className="modal__subtitle">API key</h4>
+                <input
+                  type="password"
+                  className="input"
+                  placeholder={`API key для ${aiProviders[aiCfg.provider]?.label || aiCfg.provider}`}
+                  value={aiCfg.apiKey}
+                  onChange={(e) => setAiCfg({ ...aiCfg, apiKey: e.target.value })}
+                  onBlur={() => persistAi({ apiKey: aiCfg.apiKey })}
+                />
+                {aiProviders[aiCfg.provider]?.apiKeyUrl && (
+                  <p className="modal__hint muted">
+                    Получить ключ:&nbsp;
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        try { window.open(aiProviders[aiCfg.provider].apiKeyUrl, '_blank'); } catch {}
+                      }}
+                    >{aiProviders[aiCfg.provider].apiKeyUrl}</a>
+                  </p>
+                )}
+
+                <h4 className="modal__subtitle">Модель</h4>
+                <select
+                  className="input"
+                  value={aiCfg.model || aiProviders[aiCfg.provider]?.defaultModel || ''}
+                  onChange={(e) => persistAi({ model: e.target.value })}
+                >
+                  {(aiProviders[aiCfg.provider]?.models || []).map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+
+                <div className="ai-test-row">
+                  <button
+                    className="btn btn--primary"
+                    onClick={testAi}
+                    disabled={aiTestStatus === 'busy' || !aiCfg.apiKey}
+                  >
+                    {aiTestStatus === 'busy' ? 'Тестирую...' : 'Проверить ключ'}
+                  </button>
+                  {aiTestMsg && (
+                    <span className={`ai-test-msg ai-test-msg--${aiTestStatus}`}>{aiTestMsg}</span>
+                  )}
+                </div>
+              </section>
+            )}
 
             {tab === 'plugins' && (
               <section className="modal__body">

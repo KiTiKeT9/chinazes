@@ -47,6 +47,13 @@ contextBridge.exposeInMainWorld('chinazes', {
       return () => ipcRenderer.removeListener('notes:download-progress', fn);
     },
   },
+  ai: {
+    getConfig:  ()      => ipcRenderer.invoke('ai:get-config'),
+    getFull:    ()      => ipcRenderer.invoke('ai:get-full'),
+    setConfig:  (patch) => ipcRenderer.invoke('ai:set-config', patch),
+    providers:  ()      => ipcRenderer.invoke('ai:providers'),
+    chat:       (args)  => ipcRenderer.invoke('ai:chat', args),
+  },
   screenShare: {
     // Main → renderer: 'screen-share:request' with sources, renderer responds via answer().
     onRequest: (cb) => {

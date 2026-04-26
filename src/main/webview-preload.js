@@ -11,14 +11,19 @@ const { webFrame, ipcRenderer, contextBridge } = require('electron');
 // the main-IPC bridge.
 try {
   // Older webviews have no contextBridge; fall back to direct window prop.
+  const guestApi = {
+    downloadVideo: (url) => ipcRenderer.sendToHost('chinazes:download-video', url),
+    ai: {
+      // Plugins can ask the host AI: messages = [{role, content}, ...].
+      // Returns a Promise resolving with { reply, model } or rejecting.
+      chat: (args) => ipcRenderer.invoke('ai:chat', args || {}),
+      getConfig: () => ipcRenderer.invoke('ai:get-config'),
+    },
+  };
   if (typeof contextBridge !== 'undefined' && contextBridge.exposeInMainWorld) {
-    contextBridge.exposeInMainWorld('chinazesGuest', {
-      downloadVideo: (url) => ipcRenderer.sendToHost('chinazes:download-video', url),
-    });
+    contextBridge.exposeInMainWorld('chinazesGuest', guestApi);
   } else {
-    window.chinazesGuest = {
-      downloadVideo: (url) => ipcRenderer.sendToHost('chinazes:download-video', url),
-    };
+    window.chinazesGuest = guestApi;
   }
 } catch {}
 
