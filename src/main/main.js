@@ -26,6 +26,7 @@ const updater = require('./updater');
 const notes = require('./notes');
 const videoDownloader = require('./video-downloader');
 const aiProvider = require('./ai-provider');
+const appsScanner = require('./apps-scanner');
 const netMonitor = require('./net-monitor');
 
 let mainWindow;
@@ -262,6 +263,7 @@ app.whenReady().then(async () => {
   notes.register();
   aiProvider.init();
   aiProvider.register();
+  appsScanner.register();
 
   proxyManager.init({
     userDataDir: app.getPath('userData'),

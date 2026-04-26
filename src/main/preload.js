@@ -72,6 +72,18 @@ contextBridge.exposeInMainWorld('chinazes', {
       };
     },
   },
+  apps: {
+    list:    ()      => ipcRenderer.invoke('apps:list'),
+    scan:    ()      => ipcRenderer.invoke('apps:scan'),
+    launch:  (id)    => ipcRenderer.invoke('apps:launch', id),
+    foldersGet: ()   => ipcRenderer.invoke('apps:folders:get'),
+    foldersSet: (a)  => ipcRenderer.invoke('apps:folders:set', a),
+    onScanProgress: (cb) => {
+      const fn = (_e, p) => cb(p);
+      ipcRenderer.on('apps:scan-progress', fn);
+      return () => ipcRenderer.removeListener('apps:scan-progress', fn);
+    },
+  },
   screenShare: {
     // Main → renderer: 'screen-share:request' with sources, renderer responds via answer().
     onRequest: (cb) => {
