@@ -160,8 +160,8 @@ export default function MusicBar() {
           onClick={() => setShowList((v) => !v)}
           title="Переключить источник"
         >
-          <div className="music-bar__title" title={s.title}>{s.title || 'Без названия'}</div>
-          {s.artist && <div className="music-bar__artist" title={s.artist}>{s.artist}</div>}
+          <span className="music-bar__title" title={s.title}>{s.title || 'Без названия'}</span>
+          {s.artist && <span className="music-bar__artist" title={s.artist}>{s.artist}</span>}
         </button>
         <button className="music-bar__btn" onClick={() => send('prev')} title="Предыдущий">⏮</button>
         <button

@@ -107,6 +107,12 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
             detail: { serviceId: service.id, state: ev.args?.[0] || null, sender: wv },
           }));
         } catch {}
+      } else if (ev.channel === 'chinazes:notification') {
+        try {
+          window.dispatchEvent(new CustomEvent('chinazes-notification', {
+            detail: { serviceId: service.id, serviceName: service.name, payload: ev.args?.[0] || {} },
+          }));
+        } catch {}
       }
     };
     const onTitle = (e) => patchTab(id, { title: e.title || 'Tab' });

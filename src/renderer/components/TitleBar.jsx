@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { ReloadIcon } from './Icons.jsx';
 import MusicBar from './MusicBar.jsx';
+import NotificationsBell from './NotificationsBell.jsx';
 
 function fmtBps(bps) {
   if (!bps || bps < 1) return '0 B/s';
@@ -41,6 +42,7 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload }) {
           {serverName ? <em> · {serverName}</em> : null}
         </span>
       </div>
+      <NotificationsBell />
       <MusicBar />
       <div className="titlebar__netstats" title="Системный сетевой трафик">
         <span className="netstats__line">

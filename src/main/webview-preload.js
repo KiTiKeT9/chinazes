@@ -67,6 +67,58 @@ const stub = `(() => {
 // Inject before any page script runs (webFrame runs at preload time).
 webFrame.executeJavaScript(stub).catch(() => {});
 
+// ----------------- Notification interceptor -----------------
+// Patch window.Notification so every site-fired notification is mirrored to
+// the host (renderer) — accumulated in a global notification bell. We still
+// dispatch the original Notification so OS-level toasts keep working.
+const notifPatch = `(() => {
+  try {
+    const O = window.Notification;
+    if (!O || O.__chinazesPatched) return;
+    function relay(title, options) {
+      try {
+        window.postMessage({
+          __chinazesNotif: true,
+          title: String(title || ''),
+          body:  options && options.body  ? String(options.body)  : '',
+          icon:  options && options.icon  ? String(options.icon)  : '',
+          tag:   options && options.tag   ? String(options.tag)   : '',
+          ts: Date.now(),
+        }, '*');
+      } catch (_) {}
+    }
+    function N(title, options) {
+      relay(title, options);
+      try { return new O(title, options); } catch (_) { return null; }
+    }
+    N.__chinazesPatched = true;
+    try { N.requestPermission = O.requestPermission ? O.requestPermission.bind(O) : (() => Promise.resolve('granted')); } catch (_) {}
+    try { Object.defineProperty(N, 'permission', { get() { return O.permission; } }); } catch (_) {}
+    try { Object.setPrototypeOf(N.prototype, O.prototype); } catch (_) {}
+    try {
+      Object.defineProperty(window, 'Notification', { value: N, writable: true, configurable: true });
+    } catch (_) {}
+  } catch (_) {}
+})();`;
+webFrame.executeJavaScript(notifPatch).catch(() => {});
+
+// Bridge postMessage relay -> sendToHost (preload's window listens to messages
+// posted from the page's main world).
+window.addEventListener('message', (e) => {
+  const d = e?.data;
+  if (!d || d.__chinazesNotif !== true) return;
+  try {
+    ipcRenderer.sendToHost('chinazes:notification', {
+      title: d.title || '',
+      body: d.body || '',
+      icon: d.icon || '',
+      tag: d.tag || '',
+      ts: d.ts || Date.now(),
+      url: location.href,
+    });
+  } catch {}
+});
+
 // ----------------- Media bridge -----------------
 // Polls the page for the most-relevant <video>/<audio> + navigator.mediaSession
 // metadata and forwards it to the host (renderer) via sendToHost. The host

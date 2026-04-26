@@ -76,6 +76,12 @@ export default function ServiceView({ service, visible, registerRef }) {
             detail: { serviceId: service.id, state: e.args?.[0] || null, sender: wv },
           }));
         } catch {}
+      } else if (e.channel === 'chinazes:notification') {
+        try {
+          window.dispatchEvent(new CustomEvent('chinazes-notification', {
+            detail: { serviceId: service.id, serviceName: service.name, payload: e.args?.[0] || {} },
+          }));
+        } catch {}
       }
     };
     const onNavigate = (e) => {
