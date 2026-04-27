@@ -11,8 +11,8 @@ const FREE_POOL_URLS = new Set(FREE_POOLS.map((p) => p.url));
 const SAFETY_ACK_KEY = 'chinazes:free-pool-safety-ack';
 
 const ENGINES = [
-  { id: 'warp', name: '🛡️ WARP+ (Recommended)', desc: 'Cloudflare WARP через warp-plus: авто-сканер endpoint + обфускация. UDP — у некоторых провайдеров может не работать.' },
-  { id: 'xray', name: 'Xray / v2ray',            desc: 'VLESS/VMess/Trojan/SS/Hysteria2 + подписки. Включи фильтр «Только CDN (WS+TLS)» — TCP 443 TLS, лучше работает в РФ.' },
+  { id: 'zapret', name: '⚡ Zapret 2 (Recommended)', desc: 'Системный обход DPI на уровне пакетов через WinDivert. Требует установленный Zapret 2 (https://github.com/youtubediscord/zapret). Работает не только в Chinazes, но и во всём ПК.' },
+  { id: 'xray',   name: 'Xray / v2ray',              desc: 'VLESS/VMess/Trojan/SS/Hysteria2 + подписки. Включи фильтр «Только CDN (WS+TLS)» — TCP 443 TLS, лучше работает в РФ.' },
 ];
 
 export default function SettingsModal({
@@ -166,7 +166,7 @@ export default function SettingsModal({
     setShowAddPlugin(false);
     refreshPlugins();
   }
-  const [engine, setEngine] = useState('warp');
+  const [engine, setEngine] = useState('zapret');
   const [config, setConfig] = useState(null);
   const [link, setLink] = useState('');
   const [error, setError] = useState('');
@@ -212,7 +212,7 @@ export default function SettingsModal({
   async function reload() {
     const cfg = await window.chinazes.proxy.getConfig();
     setConfig(cfg);
-    setEngine(cfg.engine || 'xray');
+    setEngine(cfg.engine || 'zapret');
     setLink(cfg.xray?.subscription || cfg.xray?.link || '');
     setError('');
   }
@@ -1014,28 +1014,28 @@ export default function SettingsModal({
                 </>
               )}
 
-              {engine === 'warp' && (
+              {engine === 'zapret' && (
                 <div className="engine-panel">
                   <p className="modal__hint">
-                    <b>🛡️ WARP+ Recommended — just works.</b> Использует Cloudflare WARP, но через
-                    <b> warp-plus</b> с авто-сканером рабочих эндпоинтов и AmneziaWG-обфускацией —
-                    обходит блокировки UDP и DPI в РФ. Без аккаунтов, без серверов, не требует админ-прав.
+                    <b>⚡ Zapret 2 — системный обход DPI на уровне пакетов.</b> В отличие от
+                    SOCKS-прокси, Zapret модифицирует TCP/UDP-пакеты через драйвер WinDivert,
+                    поэтому работает <b>сразу для всего ПК</b> — Chinazes, браузер, Discord, игры.
+                    Не требует серверов, аккаунтов и подписок.
                   </p>
-
                   <ol className="steps">
-                    <li>Скачай последний релиз с <a href="https://github.com/bepass-org/warp-plus/releases/latest" target="_blank" rel="noreferrer">github.com/bepass-org/warp-plus</a> (файл <code>warp-plus_windows-amd64.zip</code>).</li>
-                    <li>Распакуй <code>warp-plus.exe</code> в:<br/><code>resources/warp-plus/warp-plus.exe</code></li>
-                    <li>Нажми <b>Connect</b>. Первый запуск ~30 сек (сканирует endpoint), потом мгновенный.</li>
+                    <li>Скачай установщик: <a href="https://github.com/youtubediscord/zapret/releases/latest" target="_blank" rel="noreferrer">github.com/youtubediscord/zapret</a> (<code>ZapretSetup.exe</code>).</li>
+                    <li>Установи и запусти приложение <b>Zapret 2</b>. В нём выбери стратегию (например «Alt 2» или «bol-van v3») и нажми <b>Запустить</b>.</li>
+                    <li>В Chinazes нажми <b>Connect</b> — мы автоматически определим запущенный Zapret и подключимся к нему.</li>
                   </ol>
                   <p className="modal__hint muted">
-                    Локальный SOCKS5 на <code>127.0.0.1:8086</code>. Кеш сканера и WG-конфиг хранятся
-                    в <code>%APPDATA%/Chinazes/warp-plus-cache/</code>. Если перестало работать —
-                    удали кеш, при следующем Connect пересканирует.
+                    Если Zapret 2 уже работает на ПК, Chinazes не запускает второй экземпляр
+                    (две инстанции WinDivert конфликтуют). Управляй стратегиями и логами через
+                    стандартный GUI Zapret 2.
                   </p>
                 </div>
               )}
 
-              <details className="zapret-howto" open>
+              <details className="zapret-howto">
                 <summary>
                   <span>🛡️ Рекомендуемый системный VPN: AmneziaVPN (от российской команды)</span>
                   <span className="muted"> — открыть гайд</span>
@@ -1071,53 +1071,6 @@ export default function SettingsModal({
 
                   <p className="modal__hint muted">
                     Полный гайд: <a href="https://docs.amnezia.org/" target="_blank" rel="noreferrer">docs.amnezia.org</a>
-                  </p>
-                </div>
-              </details>
-
-              <details className="zapret-howto">
-                <summary>
-                  <span>💡 Бонус: системный обход DPI через Zapret (без VPN)</span>
-                  <span className="muted"> — открыть гайд</span>
-                </summary>
-                <div className="zapret-howto__body">
-                  <p className="modal__hint">
-                    <b>Zapret</b> (bol-van/zapret) — обход DPI через фрагментацию пакетов.
-                    Не VPN — IP не меняет. Работает <b>системно</b> (для всех приложений Windows,
-                    включая Chinazes, браузер, игры). Бесплатно, без серверов.
-                    <br/><b>Запускается отдельно от Chinazes</b> — мы не встраиваем его, чтобы избежать
-                    проблем с правами и совместимостью.
-                  </p>
-
-                  <h4 className="settings-section__title">Установка</h4>
-                  <ol className="steps">
-                    <li>Скачай последний релиз с <a href="https://github.com/bol-van/zapret-win-bundle/releases/latest" target="_blank" rel="noreferrer">github.com/bol-van/zapret-win-bundle</a> (файл <code>zapret-winws.zip</code>).</li>
-                    <li>Распакуй в любую папку, например <code>C:\Tools\zapret\</code>.</li>
-                    <li>Установи WinDivert-драйвер: запусти <code>service_install_russia_blacklist.cmd</code> от имени администратора.</li>
-                    <li>Готово — Zapret теперь работает как Windows-сервис, автозапуск при старте системы.</li>
-                  </ol>
-
-                  <h4 className="settings-section__title">Запуск без установки сервиса</h4>
-                  <ol className="steps">
-                    <li>Открой папку с распакованным архивом.</li>
-                    <li>Двойной клик на <code>quick_start_russia_blacklist.cmd</code> (откроется консоль — не закрывай её, пока нужен обход).</li>
-                    <li>Когда не нужен — закрой консоль, всё.</li>
-                  </ol>
-
-                  <h4 className="settings-section__title">Проверка работы</h4>
-                  <p className="modal__hint">
-                    Открой YouTube в обычном Chrome/Edge — если видео грузится без замедления,
-                    значит работает. Если нет — попробуй другой <code>.cmd</code>-пресет
-                    (есть варианты для Discord, общие, обходящие конкретные DPI-приставки).
-                  </p>
-
-                  <h4 className="settings-section__title">Удаление</h4>
-                  <p className="modal__hint">
-                    Запусти <code>service_remove.cmd</code> от админа — снимет сервис и драйвер.
-                  </p>
-
-                  <p className="modal__hint muted">
-                    Полный гайд и список стратегий: <a href="https://github.com/bol-van/zapret/blob/master/docs/quick_start.md" target="_blank" rel="noreferrer">github.com/bol-van/zapret/blob/master/docs/quick_start.md</a>
                   </p>
                 </div>
               </details>

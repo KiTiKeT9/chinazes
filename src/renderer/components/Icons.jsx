@@ -187,8 +187,17 @@ export function YandexMusicIcon(props) {
   );
 }
 
+export function ZapretIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="currentColor" {...props}>
+      <path d="M13 2 3 14h7l-1 8 11-13h-7l1-7z" />
+    </svg>
+  );
+}
+
 export function BrandIcon({ id, ...props }) {
   switch (id) {
+    case 'zapret':   return <ZapretIcon {...props} />;
     case 'telegram': return <TelegramIcon {...props} />;
     case 'discord':  return <DiscordIcon {...props} />;
     case 'youtube':  return <YoutubeIcon {...props} />;
