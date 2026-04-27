@@ -569,6 +569,132 @@ export const BUILTIN_PLUGINS = [
       })();
     `,
   },
+  {
+    id: 'vk-music-no-ads',
+    name: 'VK · музыка без рекламы',
+    description: 'Скрывает рекламные баннеры в плеере и автоматически проматывает аудио-рекламу между треками.',
+    target: 'vk',
+    css: `
+      /* Desktop vk.com — ad banners and ad rows in the audio list */
+      .audio_ad_banner,
+      .audio_player_ad,
+      .audio_ad,
+      .audio_row__ad,
+      .audio_row.audio_row_ad,
+      .audio_row[data-ad="1"],
+      .AudioAd,
+      .Music__ad,
+      ._audio_player_top_ad,
+      ._ads_block,
+      ._ad_video_pre,
+      .audio_audio_ad,
+      .ads_for_user_block,
+      .audio_pl__ad_label,
+      .audio_pl_player.audio_pl_player_ad,
+      [data-track-code*="audio_ad"] {
+        display: none !important;
+      }
+      /* Mobile m.vk.com — ad banners on audio pages */
+      .audio_ad,
+      .Audio__adLabel,
+      .Audio__ad,
+      .ads_block,
+      .ads_in_audios,
+      [data-ad-type] {
+        display: none !important;
+      }
+    `,
+    js: `
+      (function () {
+        if (window.__chinazesVkNoAdsInstalled) return;
+        window.__chinazesVkNoAdsInstalled = true;
+
+        const TAG = '[VK no-ads]';
+
+        // Heuristics for detecting an ad audio element. VK marks ad tracks via:
+        //  - <audio> src URL containing "ads", "vkads", "/audio_ads/"
+        //  - data-ad attribute on the player container
+        //  - title containing "Реклама"
+        //  - duration around 15-30s with no real owner_id
+        function isAdAudio(audio) {
+          if (!audio) return false;
+          const src = (audio.currentSrc || audio.src || '').toLowerCase();
+          if (/(?:^|\\/)(ads?|vkads|audio_ads|adver|preroll)(?:[\\/_-]|\\.)/i.test(src)) return true;
+          // Walk up to a player container with data-ad / class hints.
+          let el = audio.parentElement;
+          for (let i = 0; el && i < 6; i++, el = el.parentElement) {
+            const cn = (el.className || '').toString();
+            if (/audio_ad|player_ad|AudioAd|audio_row_ad/i.test(cn)) return true;
+            if (el.dataset && (el.dataset.ad === '1' || el.dataset.adType)) return true;
+          }
+          // Title sniff (mobile renders title in a sibling node).
+          try {
+            const titleEl = document.querySelector('.audio_player .audio_title, .Audio__title, [class*="player-title"]');
+            const title = titleEl ? titleEl.textContent || '' : '';
+            if (/(^|\\s)(Реклама|Advert|Sponsored)/i.test(title)) return true;
+          } catch (_) {}
+          return false;
+        }
+
+        function clickNext() {
+          // Try several selectors VK uses for the "next track" button.
+          const selectors = [
+            '.audio_player .audio_next',
+            '.audio_pl__btn_next',
+            '.AudioPlayerBlock__next',
+            'button[aria-label*="ledующ" i]',
+            'button[aria-label*="Next" i]',
+            '[data-action="next"]',
+          ];
+          for (const sel of selectors) {
+            const btn = document.querySelector(sel);
+            if (btn) { btn.click(); return true; }
+          }
+          return false;
+        }
+
+        function killAd(audio) {
+          try {
+            console.log(TAG, 'ad detected, skipping', audio.currentSrc || audio.src);
+            // Mute + jump to end so the player advances naturally.
+            audio.muted = true;
+            audio.volume = 0;
+            try { audio.currentTime = Math.max((audio.duration || 30) - 0.05, 0); } catch (_) {}
+            // Also try the explicit next-button.
+            setTimeout(clickNext, 200);
+          } catch (_) {}
+        }
+
+        function watch(audio) {
+          if (!audio || audio.__chinazesVkWatched) return;
+          audio.__chinazesVkWatched = true;
+          const onPlay = () => { if (isAdAudio(audio)) killAd(audio); };
+          audio.addEventListener('play', onPlay);
+          audio.addEventListener('loadedmetadata', onPlay);
+          if (!audio.paused) onPlay();
+        }
+
+        // Initial scan + observe.
+        document.querySelectorAll('audio').forEach(watch);
+        const obs = new MutationObserver((muts) => {
+          for (const m of muts) {
+            for (const node of m.addedNodes) {
+              if (!(node instanceof HTMLElement)) continue;
+              if (node.tagName === 'AUDIO') watch(node);
+              node.querySelectorAll && node.querySelectorAll('audio').forEach(watch);
+              // Also kill ad rows that get inserted into audio lists.
+              if (/audio_ad|audio_row_ad|AudioAd/i.test(node.className || '')) {
+                try { node.remove(); } catch (_) {}
+              }
+            }
+          }
+        });
+        obs.observe(document.documentElement, { subtree: true, childList: true });
+
+        console.log(TAG, 'installed');
+      })();
+    `,
+  },
 ];
 
 export function loadPlugins() {

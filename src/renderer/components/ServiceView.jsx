@@ -113,7 +113,7 @@ export default function ServiceView({ service, visible, registerRef }) {
   // Built-in defaults — services where audio should keep playing in background
   // (voice calls, streams, music). Custom services default to `true` (assume
   // user added them for media). Per-service overrides via Settings.
-  const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+  const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic', 'vk', 'youtube']);
   function loadKeepAudioBg(id, isCustom) {
     try {
       const raw = localStorage.getItem(`chinazes:keep-audio-bg:${id}`);

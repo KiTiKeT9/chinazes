@@ -76,11 +76,18 @@ export const SERVICES = [
     gradient: 'linear-gradient(135deg, #9146FF 0%, #6441A5 100%)',
     icon: 'twitch',
   },
-  // VK removed in v1.15.6 — VK's auth flow is incompatible with Electron
-  // webviews (id.vk.com QR login refuses to complete the session swap even
-  // with Chrome 135 spoofing + Sec-CH-UA fixes). Users who need VK can open
-  // it in their system browser via the custom-service feature or just search
-  // "vk" in Google. Removing avoids confusing broken-out-of-the-box state.
+  {
+    id: 'vk',
+    name: 'VK',
+    // m.vk.com — mobile version uses a simpler login flow (login + password
+    // form, SMS code) that works inside Electron webviews. Desktop id.vk.com
+    // QR-auth refuses to complete session swap regardless of UA spoofing.
+    url: 'https://m.vk.com/',
+    partition: 'persist:vk',
+    accent: '#0077FF',
+    gradient: 'linear-gradient(135deg, #4A76A8 0%, #0077FF 100%)',
+    icon: 'vk',
+  },
   {
     id: 'instagram',
     name: 'Instagram',

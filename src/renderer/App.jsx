@@ -12,6 +12,7 @@ import AIChatPanel from './components/AIChatPanel.jsx';
 import AppsLauncher from './components/AppsLauncher.jsx';
 import CoBrowse from './components/CoBrowse.jsx';
 import ZapretPanel from './components/ZapretPanel.jsx';
+import OrganizerPanel from './components/OrganizerPanel.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
@@ -24,12 +25,12 @@ const SPLIT_RATIO_KEY = 'chinazes:split-ratio';
 // users have the old URL cached in localStorage, force-reset it once.
 (function migrateVkUrl() {
   try {
-    const KEY = 'chinazes:migration:v1.15.5-vk-url';
+    const KEY = 'chinazes:migration:v1.16-vk-mobile';
     if (localStorage.getItem(KEY)) return;
-    const cached = localStorage.getItem('chinazes:last-url:vk') || '';
-    if (/^https?:\/\/(?:www\.)?vk\.com\/?(?:\?.*)?$/.test(cached) || cached === 'https://vk.com/') {
-      localStorage.removeItem('chinazes:last-url:vk');
-    }
+    // Force-clear any cached VK URL — v1.16 switches to m.vk.com (mobile),
+    // which has a working web auth flow inside Electron webviews. Previous
+    // versions tried vk.com/ and id.vk.com/login, both of which fail.
+    localStorage.removeItem('chinazes:last-url:vk');
     localStorage.setItem(KEY, '1');
   } catch {}
 })();
@@ -63,7 +64,8 @@ export default function App() {
     // the embedded native Zapret.exe window. Always pinned to the end.
     return [
       ...list,
-      { id: 'zapret', name: 'Zapret 2', icon: 'zapret', accent: '#ffd166', virtual: 'zapret' },
+      { id: 'organizer', name: 'Органайзер', icon: 'organizer', accent: '#06b6d4', virtual: 'organizer' },
+      { id: 'zapret',    name: 'Zapret 2',    icon: 'zapret',    accent: '#ffd166', virtual: 'zapret' },
     ];
   }, [servicesVersion]);
   const [hiddenIds, setHiddenIds] = useState(loadHidden);
@@ -270,6 +272,9 @@ export default function App() {
             {allServices.map((svc) => {
               if (svc.virtual === 'zapret') {
                 return <ZapretPanel key={svc.id} visible={svc.id === active} onOpenSettings={() => setSettingsOpen(true)} />;
+              }
+              if (svc.virtual === 'organizer') {
+                return <OrganizerPanel key={svc.id} visible={svc.id === active} />;
               }
               const View = svc.tabbed ? TabbedServiceView : ServiceView;
               return (

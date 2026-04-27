@@ -242,10 +242,9 @@ webFrame.executeJavaScript(stub).catch(() => {});
 // dispatch the original Notification so OS-level toasts keep working.
 const notifPatch = `(() => {
   try {
-    const O = window.Notification;
-    if (!O || O.__chinazesPatched) return;
     function relay(title, options) {
       try {
+        console.log('[Chinazes] notification fired:', title, options);
         window.postMessage({
           __chinazesNotif: true,
           title: String(title || ''),
@@ -256,20 +255,145 @@ const notifPatch = `(() => {
         }, '*');
       } catch (_) {}
     }
-    function N(title, options) {
-      relay(title, options);
-      try { return new O(title, options); } catch (_) { return null; }
+
+    // 1) Patch the classic Notification constructor.
+    const O = window.Notification;
+    if (O && !O.__chinazesPatched) {
+      function N(title, options) {
+        relay(title, options);
+        try { return new O(title, options); } catch (_) { return null; }
+      }
+      N.__chinazesPatched = true;
+      try { N.requestPermission = O.requestPermission ? O.requestPermission.bind(O) : (() => Promise.resolve('granted')); } catch (_) {}
+      try { Object.defineProperty(N, 'permission', { get() { return 'granted'; } }); } catch (_) {}
+      try { Object.setPrototypeOf(N.prototype, O.prototype); } catch (_) {}
+      try { Object.defineProperty(window, 'Notification', { value: N, writable: true, configurable: true }); } catch (_) {}
     }
-    N.__chinazesPatched = true;
-    try { N.requestPermission = O.requestPermission ? O.requestPermission.bind(O) : (() => Promise.resolve('granted')); } catch (_) {}
-    try { Object.defineProperty(N, 'permission', { get() { return O.permission; } }); } catch (_) {}
-    try { Object.setPrototypeOf(N.prototype, O.prototype); } catch (_) {}
+
+    // 2) Patch ServiceWorkerRegistration.showNotification — modern sites
+    //    (Telegram Web, Discord, YouTube, VK) use this for push notifications
+    //    and the classic Notification patch above never fires for them.
+    if (window.ServiceWorkerRegistration && window.ServiceWorkerRegistration.prototype) {
+      const proto = window.ServiceWorkerRegistration.prototype;
+      const orig  = proto.showNotification;
+      if (orig && !proto.__chinazesPatched) {
+        proto.showNotification = function (title, options) {
+          relay(title, options);
+          try { return orig.call(this, title, options); } catch (_) { return Promise.resolve(); }
+        };
+        proto.__chinazesPatched = true;
+      }
+    }
+
+    // 3) Force Notification.permission to 'granted' so sites enable push
+    //    subscriptions in the first place.
     try {
-      Object.defineProperty(window, 'Notification', { value: N, writable: true, configurable: true });
+      if (window.Notification) {
+        Object.defineProperty(window.Notification, 'permission', { get() { return 'granted'; }, configurable: true });
+      }
     } catch (_) {}
   } catch (_) {}
 })();`;
 webFrame.executeJavaScript(notifPatch).catch(() => {});
+
+// ----------------- Page Visibility spoof (background audio) -----------------
+// Chromium pauses media via document.visibilityState/hidden when the embedding
+// element gets display:none (which we use to switch tabs). VK / YouTube /
+// Yandex.Music explicitly listen for visibilitychange and pause playback when
+// the document goes hidden — even with `keep-audio-bg` enabled in our settings,
+// the *site* still pauses itself. Override these APIs so the page never thinks
+// it's hidden.
+const visibilityPatch = `(() => {
+  try {
+    Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+    Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+    Object.defineProperty(document, 'webkitHidden', { get: () => false, configurable: true });
+    Object.defineProperty(document, 'webkitVisibilityState', { get: () => 'visible', configurable: true });
+    // Block sites from receiving visibilitychange so their handlers never fire.
+    const origAdd = document.addEventListener;
+    document.addEventListener = function (type, listener, opts) {
+      if (type === 'visibilitychange' || type === 'webkitvisibilitychange') return;
+      return origAdd.call(this, type, listener, opts);
+    };
+    const origAddOnWindow = window.addEventListener;
+    window.addEventListener = function (type, listener, opts) {
+      if (type === 'visibilitychange' || type === 'webkitvisibilitychange' || type === 'pagehide') return;
+      return origAddOnWindow.call(this, type, listener, opts);
+    };
+  } catch (_) {}
+})();`;
+webFrame.executeJavaScript(visibilityPatch).catch(() => {});
+
+// ----------------- VK debug logging -----------------
+// VK auth flow has historically failed inside Electron webviews even with
+// extensive Chrome 135 fingerprint spoofing. This block adds noisy diagnostics
+// so we can see exactly where id.vk.com / vk.com breaks. Press F12 in the VK
+// tab to inspect the [Chinazes/VK] log lines.
+const vkDebug = `(() => {
+  try {
+    if (!/(\\.|^)vk\\.com$/.test(location.hostname) && !location.hostname.endsWith('id.vk.com')) return;
+    const tag = '[Chinazes/VK]';
+    console.log(tag, 'page boot', location.href, 'UA=', navigator.userAgent);
+
+    // Track navigations / postMessage between iframes (VK uses cross-origin
+    // iframes for the QR widget and session swap).
+    const origPost = window.postMessage;
+    window.addEventListener('message', (e) => {
+      try {
+        const o = e.origin || '';
+        if (o.includes('vk.com') || o.includes('id.vk.com')) {
+          console.log(tag, 'message from', o, e.data);
+        }
+      } catch (_) {}
+    }, true);
+
+    // Wrap fetch + XHR for /method/, /auth/, /api endpoints.
+    const origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = function (input, init) {
+        try {
+          const url = typeof input === 'string' ? input : input?.url;
+          if (url && /(\\/method\\/|\\/auth\\/|\\/api\\/|\\/login)/i.test(url)) {
+            console.log(tag, 'fetch ->', url, init?.method || 'GET');
+          }
+        } catch (_) {}
+        return origFetch.apply(this, arguments);
+      };
+    }
+    const origXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      try {
+        if (url && /(\\/method\\/|\\/auth\\/|\\/api\\/|\\/login)/i.test(url)) {
+          console.log(tag, 'xhr ->', method, url);
+        }
+      } catch (_) {}
+      return origXHROpen.apply(this, arguments);
+    };
+
+    // Cookie writes — VK likely sets remixsid / remixstid here on successful auth.
+    try {
+      const cookieDescriptor = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+      if (cookieDescriptor && cookieDescriptor.set) {
+        const origSet = cookieDescriptor.set;
+        Object.defineProperty(document, 'cookie', {
+          get: cookieDescriptor.get,
+          set: function (v) {
+            try {
+              if (/remixsid|remixstid|access_token|sid/.test(String(v))) {
+                console.log(tag, 'cookie set:', String(v).split(';')[0]);
+              }
+            } catch (_) {}
+            return origSet.call(this, v);
+          },
+          configurable: true,
+        });
+      }
+    } catch (_) {}
+
+    console.log(tag, 'debug instrumentation installed');
+  } catch (e) { console.warn('[Chinazes/VK] debug install failed:', e); }
+})();`;
+webFrame.executeJavaScript(vkDebug).catch(() => {});
 
 // Bridge postMessage relay -> sendToHost (preload's window listens to messages
 // posted from the page's main world).

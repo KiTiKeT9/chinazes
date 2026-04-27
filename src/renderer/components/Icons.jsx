@@ -195,9 +195,20 @@ export function ZapretIcon(props) {
   );
 }
 
+export function OrganizerIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M8 7h8M8 11h8M8 15h5" />
+      <path d="M16 3v4" />
+    </svg>
+  );
+}
+
 export function BrandIcon({ id, ...props }) {
   switch (id) {
-    case 'zapret':   return <ZapretIcon {...props} />;
+    case 'zapret':    return <ZapretIcon {...props} />;
+    case 'organizer': return <OrganizerIcon {...props} />;
     case 'telegram': return <TelegramIcon {...props} />;
     case 'discord':  return <DiscordIcon {...props} />;
     case 'youtube':  return <YoutubeIcon {...props} />;
