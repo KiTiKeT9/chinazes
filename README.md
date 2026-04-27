@@ -1,8 +1,9 @@
 
 Для работы приложения требуется zapret2 версии не ниже 21.0.0.6
-Качаем последню версию zapret2 с этого телеграмм канала https://t.me/bypassblock 
+Качаем последню версию zapret2 с этого телеграмм канала https://t.me/bypassblock или гит хаб https://github.com/youtubediscord/zapret
 
-запускаем и устанавливаем приложение во вкладке https://github.com/KiTiKeT9/chinazes/releases 
+запускаем и устанавливаем приложение во вкладке https://github.com/KiTiKeT9/chinazes/releases
+
 Инфо о приложении:
 
 Телеграмм, Ютуб, Дискорд, Тик ток, стим, почта - всё в одном месте 
