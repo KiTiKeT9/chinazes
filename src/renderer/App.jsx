@@ -11,6 +11,7 @@ import DownloadToast from './components/DownloadToast.jsx';
 import AIChatPanel from './components/AIChatPanel.jsx';
 import AppsLauncher from './components/AppsLauncher.jsx';
 import CoBrowse from './components/CoBrowse.jsx';
+import ZapretPanel from './components/ZapretPanel.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
@@ -56,7 +57,15 @@ export default function App() {
   // Service catalog is dynamic now: built-ins + user-added customs, with hidden filter.
   // `servicesVersion` bumps whenever Settings modifies the catalog so we re-resolve.
   const [servicesVersion, setServicesVersion] = useState(0);
-  const allServices = useMemo(resolveServices, [servicesVersion]);
+  const allServices = useMemo(() => {
+    const list = resolveServices();
+    // Inject the Zapret 2 "virtual service" — it's not a webview, but a host for
+    // the embedded native Zapret.exe window. Always pinned to the end.
+    return [
+      ...list,
+      { id: 'zapret', name: 'Zapret 2', icon: 'zapret', accent: '#ffd166', virtual: 'zapret' },
+    ];
+  }, [servicesVersion]);
   const [hiddenIds, setHiddenIds] = useState(loadHidden);
   const sidebarServices = useMemo(
     () => allServices.filter((s) => !hiddenIds.has(s.id)),
@@ -259,6 +268,9 @@ export default function App() {
             style={secondarySvc ? { flex: `0 0 calc(${splitRatio * 100}% - 4px)` } : undefined}
           >
             {allServices.map((svc) => {
+              if (svc.virtual === 'zapret') {
+                return <ZapretPanel key={svc.id} visible={svc.id === active} onOpenSettings={() => setSettingsOpen(true)} />;
+              }
               const View = svc.tabbed ? TabbedServiceView : ServiceView;
               return (
                 <View

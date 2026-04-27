@@ -2,8 +2,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const net = require('node:net');
 const { XrayEngine } = require('./engines/xray');
-const { WarpPlusEngine } = require('./engines/warp-plus');
 const { PsiphonEngine } = require('./engines/psiphon');
+const { ZapretEngine } = require('./engines/zapret');
 const { parseShareLink, fetchSubscription, isSubscriptionUrl } = require('./link-parser');
 
 let ctx = {
@@ -21,7 +21,7 @@ let state = {
   scope: 'app',
 };
 
-let engines = { xray: null, warp: null, psiphon: null };
+let engines = { xray: null, psiphon: null, zapret: null };
 let activeEngine = null;
 let activeProxyRules = '';
 
@@ -36,9 +36,8 @@ function getStoredConfig() {
     return JSON.parse(fs.readFileSync(configPath(), 'utf8'));
   } catch {
     return {
-      engine: 'warp',  // WARP+ is the recommended default — works out of the box in RU
+      engine: 'zapret',  // Zapret 2 — packet-level DPI bypass, system-wide, recommended default
       xray: { link: '', subscription: '', servers: [], selectedIndex: 0, meta: null },
-      warp: {},
       psiphon: {},
     };
   }
@@ -65,18 +64,17 @@ function init(options) {
     userDataDir: ctx.userDataDir,
     resourcesDir: ctx.resourcesDir,
   });
-  engines.warp = new WarpPlusEngine({
+  engines.psiphon = new PsiphonEngine({
     resourcesDir: ctx.resourcesDir,
     userDataDir: ctx.userDataDir,
   });
-  engines.psiphon = new PsiphonEngine({
+  engines.zapret = new ZapretEngine({
     resourcesDir: ctx.resourcesDir,
     userDataDir: ctx.userDataDir,
   });
 
   const stored = getStoredConfig();
-  // Migrate old engine ids: zapret/snowflake were removed. Fall back to warp.
-  const engine = ['xray', 'warp', 'psiphon'].includes(stored.engine) ? stored.engine : 'warp';
+  const engine = ['xray', 'psiphon', 'zapret'].includes(stored.engine) ? stored.engine : 'zapret';
   setState({ engine });
 }
 
@@ -166,7 +164,7 @@ function clearXrayConfig() {
 }
 
 function setEngine(engine) {
-  if (!['xray', 'warp', 'psiphon'].includes(engine)) throw new Error('Unknown engine');
+  if (!['xray', 'psiphon', 'zapret'].includes(engine)) throw new Error('Unknown engine');
   const cfg = getStoredConfig();
   cfg.engine = engine;
   saveStoredConfig(cfg);
@@ -200,16 +198,6 @@ async function start() {
         socksPort: result.socksPort,
         message: '',
       });
-    } else if (engineId === 'warp') {
-      result = await engine.start();
-      setState({
-        status: 'connected',
-        engine: 'warp',
-        scope: 'app',
-        server: { name: 'WARP+ (auto-scanner)', protocol: 'warp+' },
-        socksPort: result.socksPort,
-        message: 'WARP+ via warp-plus — endpoint scanner + AmneziaWG obfuscation',
-      });
     } else if (engineId === 'psiphon') {
       result = await engine.start();
       setState({
@@ -219,6 +207,19 @@ async function start() {
         server: { name: 'Psiphon tunnel', protocol: 'psiphon' },
         socksPort: 1099,
         message: 'Psiphon — auto-discovered tunnel, app-scoped',
+      });
+    } else if (engineId === 'zapret') {
+      result = await engine.start();
+      setState({
+        status: 'connected',
+        engine: 'zapret',
+        scope: 'system',
+        server: {
+          name: result.external ? 'Zapret 2 (external)' : 'Zapret 2',
+          protocol: 'zapret',
+        },
+        socksPort: null,
+        message: result.message || 'Zapret 2 — обход DPI на уровне пакетов (системный)',
       });
     }
 

@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld('chinazes', {
     toggleMaximize: () => ipcRenderer.send('window:toggle-maximize'),
     close: () => ipcRenderer.send('window:close'),
   },
+  zapret: {
+    status:         () => ipcRenderer.invoke('zapret-panel:status'),
+    openGui:        () => ipcRenderer.invoke('zapret-panel:open-gui'),
+    openFolder:     () => ipcRenderer.invoke('zapret-panel:open-folder'),
+    testConnection: () => ipcRenderer.invoke('zapret-panel:test-connection'),
+  },
   proxy: {
     getState:       () => ipcRenderer.invoke('proxy:get-state'),
     getConfig:      () => ipcRenderer.invoke('proxy:get-config'),

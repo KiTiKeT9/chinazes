@@ -2251,3 +2251,188 @@ input[type="text"].input--dark::placeholder {
 .zapret-howto__body h4 { margin: 14px 0 6px; }
 .zapret-howto__body .steps { padding-left: 22px; line-height: 1.6; font-size: 12.5px; }
 .zapret-howto__body code { background: rgba(255,255,255,0.06); padding: 1px 5px; border-radius: 3px; }
+
+
+/* ========== Zapret 2 embedded window ========== */
+.zapret-embed { overflow: hidden; }
+.zapret-embed__overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(14, 17, 22, 0.92);
+  pointer-events: auto;
+  z-index: 1;
+}
+.zapret-embed__loading { text-align: center; color: var(--text-1, #e6e8ff); }
+.zapret-embed__spinner {
+  width: 36px; height: 36px; margin: 0 auto 12px;
+  border: 3px solid rgba(255, 209, 102, 0.2);
+  border-top-color: #ffd166;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.zapret-embed__error {
+  max-width: 480px; padding: 24px;
+  background: rgba(255, 100, 100, 0.08);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  border-radius: 8px;
+  color: var(--text-1, #e6e8ff);
+}
+.zapret-embed__error h3 { margin: 0 0 10px; color: #ff8080; }
+.zapret-embed__error pre {
+  white-space: pre-wrap; font-size: 12px; opacity: 0.85;
+  background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 4px;
+}
+
+
+/* ========== Zapret 2 panel (replicated UI) ========== */
+.zapret-panel {
+  position: absolute; inset: 0;
+  overflow: auto;
+  padding: 28px 36px 40px;
+  color: var(--text-1, #e6e8ff);
+  background: var(--bg-1, #0e1116);
+  font-size: 14px;
+}
+
+.zapret-panel--loading,
+.zapret-panel--empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 60px;
+}
+.zapret-panel__spinner {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(255, 209, 102, 0.2);
+  border-top-color: #ffd166;
+  border-radius: 50%; margin-bottom: 14px;
+  animation: spin 0.8s linear infinite;
+}
+.zapret-panel__empty-icon {
+  font-size: 64px; margin-bottom: 12px; filter: drop-shadow(0 0 18px rgba(255,209,102,0.4));
+}
+.zapret-panel__cta {
+  display: inline-block; margin-top: 18px;
+  padding: 12px 24px; border-radius: 10px;
+  background: linear-gradient(135deg, #ffd166, #ffb84d);
+  color: #1a1a1a; font-weight: 600; text-decoration: none;
+  transition: transform 0.15s;
+}
+.zapret-panel__cta:hover { transform: translateY(-2px); }
+.zapret-panel__muted { opacity: 0.6; margin-top: 10px; font-size: 12px; }
+
+.zapret-panel__header {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 24px;
+}
+.zapret-panel__title {
+  margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.3px;
+}
+.zapret-panel__subtitle {
+  margin: 4px 0 0; opacity: 0.6; font-size: 13px;
+}
+.zapret-panel__version {
+  padding: 4px 10px; border-radius: 14px;
+  background: rgba(255, 209, 102, 0.12);
+  color: #ffd166; font-size: 12px; font-weight: 500;
+}
+
+.zapret-panel__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.zcard {
+  padding: 18px 18px 16px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.07);
+  transition: border-color 0.15s, background 0.15s;
+}
+.zcard:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); }
+.zcard__head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px; font-size: 12px; opacity: 0.7;
+}
+.zcard__icon { font-size: 16px; }
+.zcard__value { font-size: 22px; font-weight: 600; margin-bottom: 4px; }
+.zcard__desc  { font-size: 12px; opacity: 0.6; }
+.zcard--green  .zcard__value { color: #4ade80; }
+.zcard--red    .zcard__value { color: #ef4444; }
+.zcard--yellow .zcard__value { color: #ffd166; }
+.zcard--neutral .zcard__value { color: var(--text-1, #e6e8ff); }
+
+.zapret-panel__section {
+  font-size: 14px; font-weight: 500;
+  margin: 22px 0 12px;
+  opacity: 0.85;
+}
+.zapret-panel__actions {
+  display: flex; flex-wrap: wrap; gap: 10px;
+}
+.zapret-panel__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 16px; border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-1, #e6e8ff);
+  font-size: 13px; font-weight: 500;
+  cursor: pointer; text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.zapret-panel__btn:hover:not(:disabled) {
+  background: rgba(255, 209, 102, 0.1);
+  border-color: rgba(255, 209, 102, 0.4);
+}
+.zapret-panel__btn:active:not(:disabled) { transform: scale(0.97); }
+.zapret-panel__btn:disabled { opacity: 0.5; cursor: wait; }
+
+.zapret-panel__test-grid {
+  display: flex; flex-direction: column; gap: 6px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 10px; padding: 12px;
+}
+.zapret-panel__test-row {
+  display: grid; grid-template-columns: 110px 1fr auto;
+  gap: 12px; align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.zapret-panel__test-row.ok      .zapret-panel__test-result { color: #4ade80; }
+.zapret-panel__test-row.fail    .zapret-panel__test-result { color: #ef4444; }
+.zapret-panel__test-host  { opacity: 0.6; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+.zapret-panel__status-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.zapret-panel__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+}
+.zapret-panel__dot.off { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+.zapret-panel__err {
+  margin-top: 16px; padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 6px;
+  color: #fca5a5; font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.zcard--clickable { cursor: pointer; }
+.zcard--clickable:hover {
+  border-color: rgba(255, 209, 102, 0.4);
+  background: rgba(255, 209, 102, 0.05);
+  transform: translateY(-1px);
+}
+.zcard--clickable:active { transform: translateY(0); }
+.zcard--clickable:focus-visible {
+  outline: 2px solid rgba(255, 209, 102, 0.6);
+  outline-offset: 2px;
+}

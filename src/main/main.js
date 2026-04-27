@@ -408,3 +408,75 @@ ipcMain.handle('proxy:disconnect', async () => {
   return proxyManager.getState();
 });
 
+// ---------- Zapret 2 panel ----------
+
+const { execFile, spawn: childSpawn } = require('node:child_process');
+const { promisify } = require('node:util');
+const execFileP = promisify(execFile);
+
+const ZapretEngineModule = require('./engines/zapret');
+const _zapretEngineForDetect = new ZapretEngineModule.ZapretEngine({
+  userDataDir: app.getPath('userData'),
+  resourcesDir: process.resourcesPath || path.join(__dirname, '..', '..', 'resources'),
+});
+
+async function zapretStatus() {
+  const [install, running] = await Promise.all([
+    _zapretEngineForDetect.detectInstall(),
+    _zapretEngineForDetect.detectRunning(),
+  ]);
+  // Worker = winws.exe / winws2.exe; GUI = Zapret.exe.
+  const hasWorker = running.some((r) => /winws/i.test(r.name));
+  const hasGui    = running.some((r) => /^Zapret\.exe$/i.test(r.name));
+  return {
+    installed:    !!install,
+    installPath:  install?.installPath || null,
+    version:      install?.version    || null,
+    workerRunning: hasWorker,
+    guiRunning:    hasGui,
+    bypassActive:  hasWorker, // The actual DPI bypass is the worker
+  };
+}
+
+ipcMain.handle('zapret-panel:status', () => zapretStatus());
+
+ipcMain.handle('zapret-panel:open-gui', async () => {
+  const info = await _zapretEngineForDetect.detectInstall();
+  if (!info) throw new Error('Zapret 2 не установлен');
+  // Use shell.openPath so Windows handles the requireAdministrator manifest via UAC.
+  const exe = path.join(info.installPath, 'Zapret.exe');
+  if (!fs.existsSync(exe)) throw new Error(`Zapret.exe не найден в ${info.installPath}`);
+  const { shell } = require('electron');
+  const err = await shell.openPath(exe);
+  if (err) throw new Error(err);
+  return { ok: true };
+});
+
+ipcMain.handle('zapret-panel:open-folder', async () => {
+  const info = await _zapretEngineForDetect.detectInstall();
+  if (!info) throw new Error('Zapret 2 не установлен');
+  const { shell } = require('electron');
+  await shell.openPath(info.installPath);
+  return { ok: true };
+});
+
+ipcMain.handle('zapret-panel:test-connection', async () => {
+  // Best-effort: probe a few known-blocked endpoints in RU.
+  const targets = [
+    { name: 'YouTube',  host: 'www.youtube.com', port: 443 },
+    { name: 'Discord',  host: 'discord.com',     port: 443 },
+    { name: 'Cloudflare', host: '1.1.1.1',       port: 443 },
+  ];
+  const net = require('node:net');
+  const results = await Promise.all(targets.map((t) => new Promise((resolve) => {
+    const s = new net.Socket();
+    const start = Date.now();
+    s.setTimeout(3000);
+    s.once('connect', () => { s.destroy(); resolve({ ...t, ok: true,  ms: Date.now() - start }); });
+    s.once('timeout', () => { s.destroy(); resolve({ ...t, ok: false, ms: null, error: 'timeout' }); });
+    s.once('error',   (e) => { s.destroy(); resolve({ ...t, ok: false, ms: null, error: e.code || e.message }); });
+    s.connect(t.port, t.host);
+  })));
+  return results;
+});
+
