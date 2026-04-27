@@ -104,6 +104,20 @@ function createWindow() {
     if (contents.getType() === 'webview') {
       try { suppressSecurityPrompts(contents.session); } catch {}
       try { proxyManager.applyToSession(contents.session); } catch {}
+      // Forward Ctrl+1…9 / Ctrl+0 hotkeys from inside webviews to the host
+      // renderer. Without this the keystroke is consumed by the focused page
+      // (e.g. YouTube treats Ctrl+1 as a no-op, Discord steals digits, etc.).
+      try {
+        contents.on('before-input-event', (event, input) => {
+          if (input.type !== 'keyDown') return;
+          if (!input.control || input.shift || input.alt || input.meta) return;
+          if (input.key < '0' || input.key > '9') return;
+          event.preventDefault();
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('app:hotkey', { key: input.key });
+          }
+        });
+      } catch {}
     }
   });
 }

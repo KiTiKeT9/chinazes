@@ -26,7 +26,7 @@ function SidebarAvatar() {
   );
 }
 
-function ServiceTab({ svc, isActive, isSecondary, onSelect, dragging, setDragging }) {
+function ServiceTab({ svc, isActive, isSecondary, onSelect, dragging, setDragging, index }) {
   const downAt = useRef(0);
   const moved = useRef(false);
 
@@ -53,7 +53,7 @@ function ServiceTab({ svc, isActive, isSecondary, onSelect, dragging, setDraggin
         }}
         style={{ '--accent': svc.accent }}
         aria-label={svc.name}
-        title={`${svc.name} — Shift+click для split-screen`}
+        title={`${svc.name}${index < 10 ? ` (Ctrl+${index === 9 ? 0 : index + 1})` : ''} — Shift+click для split-screen`}
       >
         <AnimatePresence>
           {isActive && (
@@ -115,10 +115,11 @@ export default function Sidebar({
         className="sidebar__nav"
         as="nav"
       >
-        {services.map((svc) => (
+        {services.map((svc, idx) => (
           <ServiceTab
             key={svc.id}
             svc={svc}
+            index={idx}
             isActive={active === svc.id}
             isSecondary={secondary === svc.id}
             onSelect={onSelect}
@@ -129,38 +130,46 @@ export default function Sidebar({
       </Reorder.Group>
 
       <div className="sidebar__bottom">
-        <button
-          className="tab tab--bottom"
-          onClick={onOpenCoBrowse}
-          aria-label="Co-browse"
-          title="Co-browsing (двойная сессия)"
-        >
-          <ShareIcon />
-        </button>
-        <button
-          className="tab tab--bottom"
-          onClick={onOpenApps}
-          aria-label="Apps"
-          title="Приложения и игры"
-        >
-          <AppsIcon />
-        </button>
-        <button
-          className="tab tab--bottom"
-          onClick={onOpenAI}
-          aria-label="AI Chat"
-          title="AI чат"
-        >
-          <AIIcon />
-        </button>
-        <button
-          className="tab tab--bottom"
-          onClick={onOpenNotes}
-          aria-label="Notes"
-          title="Заметки"
-        >
-          <NotesIcon />
-        </button>
+        {onOpenCoBrowse && (
+          <button
+            className="tab tab--bottom"
+            onClick={onOpenCoBrowse}
+            aria-label="Co-browse"
+            title="Co-browsing (двойная сессия)"
+          >
+            <ShareIcon />
+          </button>
+        )}
+        {onOpenApps && (
+          <button
+            className="tab tab--bottom"
+            onClick={onOpenApps}
+            aria-label="Apps"
+            title="Приложения и игры"
+          >
+            <AppsIcon />
+          </button>
+        )}
+        {onOpenAI && (
+          <button
+            className="tab tab--bottom"
+            onClick={onOpenAI}
+            aria-label="AI Chat"
+            title="AI чат"
+          >
+            <AIIcon />
+          </button>
+        )}
+        {onOpenNotes && (
+          <button
+            className="tab tab--bottom"
+            onClick={onOpenNotes}
+            aria-label="Notes"
+            title="Заметки"
+          >
+            <NotesIcon />
+          </button>
+        )}
         <button
           className={`tab tab--bottom proxy-pill proxy-pill--${proxyStatus}`}
           title={`Proxy: ${proxyStatus}`}

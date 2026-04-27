@@ -1,6 +1,6 @@
 // Zapret 2 engine — packet-level DPI bypass via WinDivert.
 //
-// Unlike v2ray/Xray/WARP/Psiphon, Zapret does NOT open a SOCKS proxy.
+// Unlike v2ray/Xray/Psiphon, Zapret does NOT open a SOCKS proxy.
 // It modifies TCP/UDP packets in-flight at the kernel level (WinDivert driver),
 // so once it's running everything on the PC benefits — browser, webviews, games.
 //

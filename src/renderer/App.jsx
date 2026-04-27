@@ -14,6 +14,7 @@ import CoBrowse from './components/CoBrowse.jsx';
 import ZapretPanel from './components/ZapretPanel.jsx';
 import OrganizerPanel from './components/OrganizerPanel.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
+import { applyUIPrefs, loadUIPrefs, onUIPrefsChange } from './ui-prefs.js';
 import { UA_PRESETS, getStoredUA } from './user-agents.js';
 import { resolveServices, visibleServices, loadHidden, saveHidden, addCustomService, removeCustomService } from './service-prefs.js';
 
@@ -84,6 +85,7 @@ export default function App() {
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
   const [coBrowseOpen, setCoBrowseOpen] = useState(false);
+  const [uiPrefs, setUiPrefs] = useState(loadUIPrefs);
   const [proxyState, setProxyState] = useState({
     status: 'disconnected',
     message: '',
@@ -96,10 +98,13 @@ export default function App() {
 
   useEffect(() => {
     applyTheme(getStoredTheme());
+    applyUIPrefs(uiPrefs);
+    const off = onUIPrefsChange(setUiPrefs);
     // Apply stored UA preset on app start (before webviews load).
     const stored = getStoredUA();
     const preset = UA_PRESETS.find((p) => p.id === stored) || UA_PRESETS[0];
     window.chinazes?.app?.setUserAgent?.(preset.ua || '');
+    return off;
   }, []);
 
   useEffect(() => {
@@ -174,6 +179,34 @@ export default function App() {
 
   const getActiveWebview = useCallback(() => webviewRefs.current[active] || null, [active]);
 
+  // Ctrl+1…9 / Ctrl+0 — quick switch to the N-th service in sidebar order.
+  // 1..9 → indices 0..8, 0 → index 9 (10th tab). Ignored when typing in inputs.
+  // We listen both on the host window (for keystrokes in the chrome) and via
+  // an IPC bridge from main.js (for keystrokes inside webviews).
+  useEffect(() => {
+    const switchTo = (key) => {
+      const idx = key === '0' ? 9 : parseInt(key, 10) - 1;
+      const svc = orderedServices[idx];
+      if (!svc) return;
+      setActive(svc.id);
+      if (secondary === svc.id) setSecondary(null);
+    };
+    const onKey = (e) => {
+      if (!e.ctrlKey || e.shiftKey || e.altKey || e.metaKey) return;
+      if (e.key < '0' || e.key > '9') return;
+      const tag = (e.target?.tagName || '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+      e.preventDefault();
+      switchTo(e.key);
+    };
+    window.addEventListener('keydown', onKey);
+    const off = window.chinazes?.app?.onHotkey?.(({ key }) => switchTo(key));
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      off?.();
+    };
+  }, [orderedServices, secondary]);
+
   // Ctrl+Shift+I / F12 — open DevTools for the currently focused webview.
   useEffect(() => {
     const onKey = (e) => {
@@ -246,7 +279,7 @@ export default function App() {
         proxyStatus={proxyState.status}
         serverName={proxyState.server?.name}
         onReload={reloadActive}
-        onOpenAI={() => setAiChatOpen(true)}
+        onOpenAI={uiPrefs.features.ai ? () => setAiChatOpen(true) : null}
       />
       <div className="app__body">
         <Sidebar
@@ -257,10 +290,10 @@ export default function App() {
           secondary={secondary}
           onSelect={onSelectService}
           onOpenSettings={() => setSettingsOpen(true)}
-          onOpenNotes={() => setNotesOpen(true)}
-          onOpenAI={() => setAiChatOpen(true)}
-          onOpenApps={() => setAppsOpen(true)}
-          onOpenCoBrowse={() => setCoBrowseOpen(true)}
+          onOpenNotes={uiPrefs.features.notes ? () => setNotesOpen(true) : null}
+          onOpenAI={uiPrefs.features.ai ? () => setAiChatOpen(true) : null}
+          onOpenApps={uiPrefs.features.apps ? () => setAppsOpen(true) : null}
+          onOpenCoBrowse={uiPrefs.features.cobrowse ? () => setCoBrowseOpen(true) : null}
           proxyStatus={proxyState.status}
         />
         <main className={`app__content ${secondarySvc ? 'app__content--split' : ''} ${resizing ? 'app__content--resizing' : ''}`} ref={dragRef}>

@@ -305,21 +305,16 @@ webFrame.executeJavaScript(notifPatch).catch(() => {});
 // it's hidden.
 const visibilityPatch = `(() => {
   try {
+    // Override the visibility properties only — sites that *read* document.hidden /
+    // visibilityState during their visibilitychange handler will see 'visible' and
+    // therefore won't pause playback. We deliberately don't block the event itself
+    // (overriding addEventListener globally breaks SPAs and was causing crashes).
     Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
     Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
     Object.defineProperty(document, 'webkitHidden', { get: () => false, configurable: true });
     Object.defineProperty(document, 'webkitVisibilityState', { get: () => 'visible', configurable: true });
-    // Block sites from receiving visibilitychange so their handlers never fire.
-    const origAdd = document.addEventListener;
-    document.addEventListener = function (type, listener, opts) {
-      if (type === 'visibilitychange' || type === 'webkitvisibilitychange') return;
-      return origAdd.call(this, type, listener, opts);
-    };
-    const origAddOnWindow = window.addEventListener;
-    window.addEventListener = function (type, listener, opts) {
-      if (type === 'visibilitychange' || type === 'webkitvisibilitychange' || type === 'pagehide') return;
-      return origAddOnWindow.call(this, type, listener, opts);
-    };
+    // hasFocus → always true so sites think the window is focused.
+    try { document.hasFocus = () => true; } catch (_) {}
   } catch (_) {}
 })();`;
 webFrame.executeJavaScript(visibilityPatch).catch(() => {});

@@ -4,6 +4,11 @@ contextBridge.exposeInMainWorld('chinazes', {
   app: {
     getVersion:    () => ipcRenderer.invoke('app:get-version'),
     setUserAgent:  (ua) => ipcRenderer.invoke('app:set-user-agent', ua),
+    onHotkey: (callback) => {
+      const listener = (_e, payload) => callback(payload);
+      ipcRenderer.on('app:hotkey', listener);
+      return () => ipcRenderer.removeListener('app:hotkey', listener);
+    },
   },
   net: {
     onStats: (callback) => {
@@ -58,6 +63,7 @@ contextBridge.exposeInMainWorld('chinazes', {
     getFull:    ()      => ipcRenderer.invoke('ai:get-full'),
     setConfig:  (patch) => ipcRenderer.invoke('ai:set-config', patch),
     providers:  ()      => ipcRenderer.invoke('ai:providers'),
+    listLocalModels: (provider) => ipcRenderer.invoke('ai:list-local-models', provider),
     chat:       (args)  => ipcRenderer.invoke('ai:chat', args),
     // Streaming: returns a function `cancel`. onChunk(delta), onDone({error?})
     chatStream: (args, onChunk, onDone) => {

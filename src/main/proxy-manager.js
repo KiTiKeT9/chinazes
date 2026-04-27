@@ -15,7 +15,7 @@ let ctx = {
 let state = {
   status: 'disconnected', // disconnected | starting | connected | error
   message: '',
-  engine: 'xray',         // xray | warp | psiphon
+  engine: 'xray',         // xray | psiphon | zapret
   server: null,           // meta of active server (xray only)
   socksPort: null,
   scope: 'app',

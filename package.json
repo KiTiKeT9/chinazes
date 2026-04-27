@@ -1,6 +1,6 @@
 {
   "name": "chinazes",
-  "version": "1.16.1",
+  "version": "1.16.2",
   "description": "Desktop hub for Telegram, Discord, YouTube, TikTok, Steam and more — with Zapret 2 DPI bypass integration, AI assistant, notes, game launcher, co-browsing and Xray/v2ray proxy support.",
   "main": "src/main/main.js",
   "scripts": {
@@ -59,14 +59,6 @@
           "**/*",
           "!*.md",
           "!*.txt"
-        ]
-      },
-      {
-        "from": "resources/warp-plus",
-        "to": "warp-plus",
-        "filter": [
-          "**/*",
-          "!*.md"
         ]
       }
     ],

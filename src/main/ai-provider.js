@@ -79,6 +79,24 @@ const PROVIDERS = {
     desc: 'Французский провайдер. Работает в РФ. Есть бесплатный тариф.',
     baseUrl: 'https://api.mistral.ai/v1',
   },
+  ollama: {
+    label: 'Ollama 🖥️',
+    defaultModel: 'llama3.2',
+    models: ['llama3.2', 'llama3.1', 'qwen2.5', 'mistral', 'gemma2', 'phi3'],
+    vision: false,
+    local: true,
+    desc: 'Локальный сервер на вашем ПК. Запустите `ollama serve` (по умолчанию http://localhost:11434). API key не требуется.',
+    baseUrl: 'http://localhost:11434/v1',
+  },
+  lmstudio: {
+    label: 'LM Studio 🖥️',
+    defaultModel: 'local-model',
+    models: ['local-model'],
+    vision: false,
+    local: true,
+    desc: 'Локальный сервер LM Studio. Включите Local Server (по умолчанию http://localhost:1234). API key не требуется.',
+    baseUrl: 'http://localhost:1234/v1',
+  },
 };
 
 let configPath;
@@ -124,9 +142,9 @@ async function chat({ messages, provider, apiKey, model }) {
   const key = apiKey || config.apiKey;
   const m = model || config.model || PROVIDERS[p]?.defaultModel;
   if (!PROVIDERS[p]) throw new Error('Unknown AI provider: ' + p);
-  if (!key) throw new Error('AI API key not set. Open Settings → AI.');
+  if (!key && !PROVIDERS[p].local) throw new Error('AI API key not set. Open Settings → AI.');
   if (p === 'gemini') return chatGemini({ messages, key, model: m });
-  return chatOpenAICompatible({ messages, key, model: m, provider: p });
+  return chatOpenAICompatible({ messages, key: key || 'local', model: m, provider: p });
 }
 
 function normalizeOpenAIMessages(messages) {
@@ -229,13 +247,13 @@ async function chatStream({ requestId, messages, provider, apiKey, model }, send
   };
 
   if (!PROVIDERS[p]) { send('ai:stream-done', { error: 'Unknown provider: ' + p }); return; }
-  if (!key) { send('ai:stream-done', { error: 'AI API key not set. Open Settings → AI.' }); return; }
+  if (!key && !PROVIDERS[p].local) { send('ai:stream-done', { error: 'AI API key not set. Open Settings → AI.' }); return; }
 
   try {
     if (p === 'gemini') {
       await streamGemini({ messages, key, model: m }, (text) => send('ai:stream-chunk', { delta: text }));
     } else {
-      await streamOpenAICompat({ messages, key, model: m, provider: p }, (text) => send('ai:stream-chunk', { delta: text }));
+      await streamOpenAICompat({ messages, key: key || 'local', model: m, provider: p }, (text) => send('ai:stream-chunk', { delta: text }));
     }
     send('ai:stream-done', {});
   } catch (e) {
@@ -325,11 +343,34 @@ async function streamGemini({ messages, key, model }, onChunk) {
   }
 }
 
+// Query a local OpenAI-compatible server (Ollama, LM Studio) for its installed
+// model list. Returns { ok, models } or { ok: false, error }. Used by the
+// Settings UI to populate the model dropdown without manual entry.
+async function listLocalModels(provider) {
+  const prov = PROVIDERS[provider];
+  if (!prov || !prov.local) return { ok: false, error: 'Not a local provider' };
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 4000);
+    const res = await fetch(`${prov.baseUrl}/models`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    const data = await res.json();
+    const models = Array.isArray(data?.data)
+      ? data.data.map((m) => m?.id).filter(Boolean)
+      : [];
+    return { ok: true, models };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+}
+
 function register() {
   ipcMain.handle('ai:get-config',   ()      => getConfig());
   ipcMain.handle('ai:get-full',     ()      => getFullConfig());
   ipcMain.handle('ai:set-config',   (_e, p) => setConfig(p));
   ipcMain.handle('ai:providers',    ()      => PROVIDERS);
+  ipcMain.handle('ai:list-local-models', (_e, provider) => listLocalModels(provider));
   ipcMain.handle('ai:chat',         (_e, args) => chat(args || {}));
   ipcMain.on('ai:chat-stream', (e, args) => chatStream(args || {}, e.sender));
 }

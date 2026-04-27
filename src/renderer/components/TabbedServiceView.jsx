@@ -135,22 +135,45 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
   }, [addTab, patchTab, service.id]);
 
   // Mute audio of non-active tabs and non-visible service to prevent background autoplay.
-  // Exception: voice/call/streaming services keep playing while service is hidden so
-  // calls and streams don't drop on tab switch — but ONLY after the user has
-  // visited the service at least once (otherwise Twitch / etc. autoplays at launch).
-  const KEEP_AUDIO_BG = new Set(['twitch']);
+  // Exception: services with the per-service "keep audio in background" flag keep
+  // playing while service is hidden so calls/streams/music don't drop on tab
+  // switch — but ONLY after the user has visited the service at least once
+  // (otherwise YouTube / Twitch / etc. autoplay at launch).
+  const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic', 'vk', 'youtube']);
+  function loadKeepAudioBg(id, isCustom) {
+    try {
+      const raw = localStorage.getItem(`chinazes:keep-audio-bg:${id}`);
+      if (raw === '1') return true;
+      if (raw === '0') return false;
+    } catch {}
+    return isCustom ? true : KEEP_AUDIO_BG_DEFAULTS.has(id);
+  }
   const wasVisibleRef = useRef(false);
   if (visible) wasVisibleRef.current = true;
+  const [keepBg, setKeepBg] = useState(() => loadKeepAudioBg(service.id, !!service.custom));
+  useEffect(() => {
+    const onPrefs = (e) => {
+      if (!e || e.key === `chinazes:keep-audio-bg:${service.id}` || e.type === 'chinazes-prefs-changed') {
+        setKeepBg(loadKeepAudioBg(service.id, !!service.custom));
+      }
+    };
+    window.addEventListener('storage', onPrefs);
+    window.addEventListener('chinazes-prefs-changed', onPrefs);
+    return () => {
+      window.removeEventListener('storage', onPrefs);
+      window.removeEventListener('chinazes-prefs-changed', onPrefs);
+    };
+  }, [service.id, service.custom]);
   useEffect(() => {
     Object.entries(webviewRefs.current).forEach(([id, wv]) => {
       if (!wv) return;
       const inactiveTab = id !== activeId;
       const hiddenService = !visible;
-      const allowBg = KEEP_AUDIO_BG.has(service.id) && wasVisibleRef.current;
+      const allowBg = keepBg && wasVisibleRef.current;
       const mute = inactiveTab || (hiddenService && !allowBg);
       try { wv.setAudioMuted?.(mute); } catch {}
     });
-  }, [visible, activeId, tabs, service.id]);
+  }, [visible, activeId, tabs, service.id, keepBg]);
 
   return (
     <motion.div

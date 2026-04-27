@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldIcon, BrandIcon } from './Icons.jsx';
 import { loadPlugins, setEnabled as setPluginEnabled, addCustomPlugin, removePlugin, updateCustomPlugin } from '../plugins.js';
 import { THEMES, getStoredTheme, setStoredTheme } from '../themes.js';
+import { loadUIPrefs, saveUIPrefs, SIDEBAR_SIZES } from '../ui-prefs.js';
 import { UA_PRESETS, getStoredUA, setStoredUA } from '../user-agents.js';
 import { FREE_POOLS } from '../free-pools.js';
 import { detectCountry } from '../country-flags.js';
@@ -26,6 +27,7 @@ export default function SettingsModal({
   onRemoveCustom = () => {},
 }) {
   const [tab, setTab] = useState('connection'); // 'connection' | 'appearance' | 'services' | 'plugins' | 'ai'
+  const [audioBump, setAudioBump] = useState(0); // bump on bg-audio toggle to re-render rows
 
   // AI config state
   const [aiProviders, setAiProviders] = useState({});
@@ -33,6 +35,25 @@ export default function SettingsModal({
   const [aiKeysPerProvider, setAiKeysPerProvider] = useState({}); // separate keys per provider
   const [aiTestStatus, setAiTestStatus] = useState(''); // '' | 'busy' | 'ok' | 'err'
   const [aiTestMsg, setAiTestMsg] = useState('');
+  const [localStatus, setLocalStatus] = useState({ state: 'idle', models: [], error: '' });
+  const refreshLocalModels = async () => {
+    if (!aiProviders[aiCfg.provider]?.local) return;
+    setLocalStatus({ state: 'busy', models: [], error: '' });
+    try {
+      const res = await window.chinazes?.ai?.listLocalModels?.(aiCfg.provider);
+      if (res?.ok) setLocalStatus({ state: 'ok', models: res.models || [], error: '' });
+      else setLocalStatus({ state: 'err', models: [], error: res?.error || 'нет ответа' });
+    } catch (e) {
+      setLocalStatus({ state: 'err', models: [], error: e?.message || String(e) });
+    }
+  };
+  // Auto-probe when switching to a local provider.
+  useEffect(() => {
+    if (!open) return;
+    if (aiProviders[aiCfg.provider]?.local) refreshLocalModels();
+    else setLocalStatus({ state: 'idle', models: [], error: '' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, aiCfg.provider, aiProviders]);
   useEffect(() => {
     if (!open) return;
     (async () => {
@@ -172,6 +193,18 @@ export default function SettingsModal({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [theme, setTheme] = useState(getStoredTheme());
+  const [uiPrefs, setUiPrefs] = useState(loadUIPrefs);
+  const updateUI = (patch) => {
+    setUiPrefs((cur) => {
+      const next = {
+        ...cur,
+        ...patch,
+        features: { ...cur.features, ...(patch.features || {}) },
+      };
+      saveUIPrefs(next);
+      return next;
+    });
+  };
   const [uaId, setUaId] = useState(getStoredUA());
   const [latencies, setLatencies] = useState([]);   // ms or null per server
   const [probing, setProbing] = useState(false);
@@ -433,7 +466,7 @@ export default function SettingsModal({
               <button
                 className={`modal__seg-btn ${tab === 'plugins' ? 'modal__seg-btn--active' : ''}`}
                 onClick={() => setTab('plugins')}
-              >Plugins</button>
+              >Plugins <span className="beta-tag">beta</span></button>
               <button
                 className={`modal__seg-btn ${tab === 'ai' ? 'modal__seg-btn--active' : ''}`}
                 onClick={() => setTab('ai')}
@@ -469,26 +502,45 @@ export default function SettingsModal({
                   ))}
                 </div>
 
-                <h4 className="modal__subtitle">API key</h4>
-                <input
-                  type="password"
-                  className="input input--dark"
-                  placeholder={`API key для ${aiProviders[aiCfg.provider]?.label || aiCfg.provider}`}
-                  value={aiCfg.apiKey}
-                  onChange={(e) => setAiCfg({ ...aiCfg, apiKey: e.target.value })}
-                  onBlur={() => persistAi({ apiKey: aiCfg.apiKey })}
-                />
-                {aiProviders[aiCfg.provider]?.apiKeyUrl && (
-                  <p className="modal__hint muted">
-                    Получить ключ:&nbsp;
-                    <a
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        try { window.open(aiProviders[aiCfg.provider].apiKeyUrl, '_blank'); } catch {}
-                      }}
-                    >{aiProviders[aiCfg.provider].apiKeyUrl}</a>
-                  </p>
+                {!aiProviders[aiCfg.provider]?.local && (
+                  <>
+                    <h4 className="modal__subtitle">API key</h4>
+                    <input
+                      type="password"
+                      className="input input--dark"
+                      placeholder={`API key для ${aiProviders[aiCfg.provider]?.label || aiCfg.provider}`}
+                      value={aiCfg.apiKey}
+                      onChange={(e) => setAiCfg({ ...aiCfg, apiKey: e.target.value })}
+                      onBlur={() => persistAi({ apiKey: aiCfg.apiKey })}
+                    />
+                    {aiProviders[aiCfg.provider]?.apiKeyUrl && (
+                      <p className="modal__hint muted">
+                        Получить ключ:&nbsp;
+                        <a
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            try { window.open(aiProviders[aiCfg.provider].apiKeyUrl, '_blank'); } catch {}
+                          }}
+                        >{aiProviders[aiCfg.provider].apiKeyUrl}</a>
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {aiProviders[aiCfg.provider]?.local && (
+                  <div className="ai-local-status">
+                    <span className={`ai-local-status__dot ai-local-status__dot--${localStatus.state}`} />
+                    <span className="ai-local-status__text">
+                      {localStatus.state === 'ok' && `Сервер запущен · ${localStatus.models?.length || 0} моделей`}
+                      {localStatus.state === 'busy' && 'Проверяю сервер…'}
+                      {localStatus.state === 'err' && `Сервер недоступен: ${localStatus.error || 'нет ответа'}`}
+                      {localStatus.state === 'idle' && `Адрес: ${aiProviders[aiCfg.provider]?.baseUrl}`}
+                    </span>
+                    <button className="btn btn--ghost btn--small" onClick={refreshLocalModels} disabled={localStatus.state === 'busy'}>
+                      ↻ Обновить
+                    </button>
+                  </div>
                 )}
 
                 <h4 className="modal__subtitle">Модель</h4>
@@ -497,16 +549,24 @@ export default function SettingsModal({
                   value={aiCfg.model || aiProviders[aiCfg.provider]?.defaultModel || ''}
                   onChange={(e) => persistAi({ model: e.target.value })}
                 >
-                  {(aiProviders[aiCfg.provider]?.models || []).map((m) => (
-                    <option key={m} value={m}>{m}</option>
-                  ))}
+                  {(() => {
+                    const builtIn = aiProviders[aiCfg.provider]?.models || [];
+                    const live = aiProviders[aiCfg.provider]?.local && localStatus.state === 'ok'
+                      ? localStatus.models : [];
+                    const seen = new Set();
+                    const merged = [...live, ...builtIn].filter((m) => {
+                      if (!m || seen.has(m)) return false;
+                      seen.add(m); return true;
+                    });
+                    return merged.map((m) => <option key={m} value={m}>{m}</option>);
+                  })()}
                 </select>
 
                 <div className="ai-test-row">
                   <button
                     className="btn btn--primary"
                     onClick={testAi}
-                    disabled={aiTestStatus === 'busy' || !aiCfg.apiKey}
+                    disabled={aiTestStatus === 'busy' || (!aiCfg.apiKey && !aiProviders[aiCfg.provider]?.local)}
                   >
                     {aiTestStatus === 'busy' ? 'Тестирую...' : 'Проверить ключ'}
                   </button>
@@ -519,6 +579,10 @@ export default function SettingsModal({
 
             {tab === 'plugins' && (
               <section className="modal__body">
+                <div className="beta-banner">
+                  <span className="beta-banner__tag">BETA</span>
+                  <span>Часть плагинов сейчас не работает корректно — чиним. Включай на свой страх и риск.</span>
+                </div>
                 <p className="modal__hint">
                   Плагины инжектят CSS / JS внутрь webview конкретного сервиса. Включай
                   готовые из стора или пиши свои. JS выполняется в контексте сайта, будь
@@ -676,13 +740,14 @@ export default function SettingsModal({
                         if (v === '0') return false;
                       } catch {}
                       // Custom services default to true (assume media), built-ins follow hardcoded list
-                      const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic']);
+                      const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic', 'vk', 'youtube']);
                       return svc.custom ? true : KEEP_AUDIO_BG_DEFAULTS.has(svc.id);
                     })();
                     const setKeepAudio = (val) => {
                       try {
                         localStorage.setItem(keepAudioKey, val ? '1' : '0');
                         window.dispatchEvent(new CustomEvent('chinazes-prefs-changed'));
+                        setAudioBump((n) => n + 1);
                       } catch {}
                     };
                     return (
@@ -696,13 +761,14 @@ export default function SettingsModal({
                           <div className="svc-row__name">{svc.name}{svc.custom ? ' · custom' : ''}</div>
                           <div className="svc-row__url">{svc.url}</div>
                           <div className="svc-row__audio">
-                            <label className="svc-row__audio-toggle" title="Продолжать играть звук в фоне">
+                            <span className="svc-row__audio-label">🔊 Фоновый звук</span>
+                            <label className="switch switch--small" title="Продолжать играть звук в фоне">
                               <input
                                 type="checkbox"
                                 checked={keepAudio}
                                 onChange={(e) => setKeepAudio(e.target.checked)}
                               />
-                              <span>🔊 Фоновый звук</span>
+                              <span className="switch__slider" />
                             </label>
                           </div>
                         </div>
@@ -779,6 +845,67 @@ export default function SettingsModal({
                       {theme === t.id && <span className="theme-card__check">✓</span>}
                     </button>
                   ))}
+                </div>
+
+                <div className="settings-section">
+                  <h4 className="settings-section__title">Размер иконок sidebar</h4>
+                  <p className="modal__hint muted">Применяется сразу. Влияет на ширину боковой панели и величину иконок.</p>
+                  <div className="size-grid">
+                    {Object.keys(SIDEBAR_SIZES).map((id) => {
+                      const s = SIDEBAR_SIZES[id];
+                      const label = id === 'small' ? 'Компактный' : id === 'large' ? 'Крупный' : 'Стандартный';
+                      const active = uiPrefs.sidebarSize === id;
+                      return (
+                        <button
+                          key={id}
+                          className={`size-card ${active ? 'size-card--active' : ''}`}
+                          onClick={() => updateUI({ sidebarSize: id })}
+                        >
+                          <span
+                            className="size-card__preview"
+                            style={{
+                              width: s.tab,
+                              height: s.tab,
+                              borderRadius: s.radius,
+                            }}
+                          >
+                            <span style={{ width: s.icon, height: s.icon }} />
+                          </span>
+                          <span className="size-card__name">{label}</span>
+                          <span className="size-card__desc">{s.sidebar}px / иконка {s.icon}px</span>
+                          {active && <span className="theme-card__check">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="settings-section">
+                  <h4 className="settings-section__title">Боковые кнопки</h4>
+                  <p className="modal__hint muted">Скройте ненужные кнопки в нижней части sidebar и в заголовке.</p>
+                  <div className="feature-toggles">
+                    {[
+                      { id: 'cobrowse', label: 'Co-browsing',   desc: 'Двойная сессия одного сайта' },
+                      { id: 'apps',     label: 'Приложения',    desc: 'Игры и web-приложения' },
+                      { id: 'ai',       label: 'AI чат',        desc: 'Чат-ассистент в боковой панели' },
+                      { id: 'notes',    label: 'Заметки',       desc: 'Локальные заметки' },
+                    ].map((f) => (
+                      <label key={f.id} className="feature-toggle">
+                        <span className="feature-toggle__meta">
+                          <span className="feature-toggle__name">{f.label}</span>
+                          <span className="feature-toggle__desc">{f.desc}</span>
+                        </span>
+                        <span className="switch">
+                          <input
+                            type="checkbox"
+                            checked={!!uiPrefs.features[f.id]}
+                            onChange={(e) => updateUI({ features: { [f.id]: e.target.checked } })}
+                          />
+                          <span className="switch__slider" />
+                        </span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="settings-section">
