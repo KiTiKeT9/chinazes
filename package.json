@@ -1,7 +1,7 @@
 {
   "name": "chinazes",
   "version": "1.16.0",
-  "description": "Desktop hub for Telegram, Discord, YouTube and TikTok with built-in v2ray/Xray proxy (app-scoped, not system-wide).",
+  "description": "Desktop hub for Telegram, Discord, YouTube, TikTok, Steam and more — with Zapret 2 DPI bypass integration, AI assistant, notes, game launcher, co-browsing and Xray/v2ray proxy support.",
   "main": "src/main/main.js",
   "scripts": {
     "dev": "concurrently -k -n VITE,ELECTRON -c cyan,magenta \"npm:dev:renderer\" \"npm:dev:main\"",
