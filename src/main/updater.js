@@ -1,10 +1,3 @@
-// Auto-update via electron-updater + GitHub releases.
-// Workflow:
-//   1. App boot -> checkForUpdatesAndNotify() (silent, every launch)
-//   2. If a new version is published, electron-updater downloads it in the background
-//   3. On 'update-downloaded' we ping the renderer; user clicks "Restart" -> quitAndInstall()
-//
-// Publishing: `npm run release` (requires GH_TOKEN env with repo write access).
 
 const { autoUpdater } = require('electron-updater');
 const { ipcMain } = require('electron');
