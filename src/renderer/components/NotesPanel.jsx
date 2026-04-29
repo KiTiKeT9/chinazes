@@ -9,6 +9,12 @@ export default function NotesPanel({ open, onClose }) {
   const [lightbox, setLightbox] = useState(null); // { type, url } | null
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
+  const notesListRef = useRef(null);
+
+  // Drag-to-scroll state
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const scrollTop = useRef(0);
 
   const reload = useCallback(async () => {
     try {
@@ -63,6 +69,47 @@ export default function NotesPanel({ open, onClose }) {
     document.addEventListener('paste', onPaste);
     return () => document.removeEventListener('paste', onPaste);
   }, [open, reload]);
+
+  // ESC key to close lightbox
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setLightbox(null);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [lightbox]);
+
+  // Drag-to-scroll handlers (only middle mouse button)
+  const handleMouseDown = (e) => {
+    if (e.button !== 1) return; // Only middle mouse button
+    // Don't start drag if clicking on interactive elements
+    const tag = e.target.tagName.toLowerCase();
+    if (tag === 'img' || tag === 'video' || tag === 'button' || tag === 'input' || tag === 'a') return;
+    const el = notesListRef.current;
+    if (!el) return;
+    isDragging.current = true;
+    startY.current = e.clientY;
+    scrollTop.current = el.scrollTop;
+    el.style.cursor = 'grabbing';
+    e.preventDefault();
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isDragging.current) return;
+    e.preventDefault();
+    const el = notesListRef.current;
+    if (!el) return;
+    const deltaY = startY.current - e.clientY;
+    el.scrollTop = scrollTop.current + deltaY;
+  };
+
+  const handleMouseUp = (e) => {
+    if (!isDragging.current) return;
+    isDragging.current = false;
+    const el = notesListRef.current;
+    if (el) el.style.cursor = '';
+  };
 
   async function uploadFile(file) {
     setBusy(true);
@@ -207,7 +254,14 @@ export default function NotesPanel({ open, onClose }) {
               <button className="btn btn--primary" onClick={onAddText} disabled={!text.trim()}>+</button>
             </div>
 
-            <div className="notes-list">
+            <div
+              ref={notesListRef}
+              className="notes-list"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+            >
               {notes.length === 0 && <div className="notes-empty">Пусто. Вставь медиа из буфера или перетащи файл.</div>}
               {notes.map((n) => (
                 <NoteCard
@@ -230,13 +284,18 @@ export default function NotesPanel({ open, onClose }) {
           {lightbox && (
             <motion.div
               className="note-lightbox"
-              onClick={() => setLightbox(null)}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
+              <div className="note-lightbox__backdrop" onClick={() => setLightbox(null)} />
               {(lightbox.type === 'image' || lightbox.type === 'gif') && (
-                <img src={lightbox.url} alt="" onClick={(e) => e.stopPropagation()} />
+                <img
+                  src={lightbox.url}
+                  alt=""
+                  onClick={(e) => e.stopPropagation()}
+                  draggable={false}
+                />
               )}
               {lightbox.type === 'video' && (
                 <video
@@ -247,6 +306,7 @@ export default function NotesPanel({ open, onClose }) {
                 />
               )}
               <button className="note-lightbox__close" onClick={() => setLightbox(null)}>×</button>
+              <div className="note-lightbox__hint">ESC или клик вне изображения — закрыть</div>
             </motion.div>
           )}
         </motion.div>

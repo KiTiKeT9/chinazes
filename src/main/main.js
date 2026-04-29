@@ -494,3 +494,8 @@ ipcMain.handle('zapret-panel:test-connection', async () => {
   return results;
 });
 
+// Cleanup on app quit
+app.on('before-quit', () => {
+  // Cleanup code here
+});
+

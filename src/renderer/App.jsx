@@ -11,6 +11,7 @@ import DownloadToast from './components/DownloadToast.jsx';
 import AIChatPanel from './components/AIChatPanel.jsx';
 import AppsLauncher from './components/AppsLauncher.jsx';
 import CoBrowse from './components/CoBrowse.jsx';
+import AIriIntegration from './components/AIriIntegration.jsx';
 import ZapretPanel from './components/ZapretPanel.jsx';
 import OrganizerPanel from './components/OrganizerPanel.jsx';
 import { applyTheme, getStoredTheme } from './themes.js';
@@ -369,6 +370,7 @@ export default function App() {
       <UpdateToast />
       <ScreenSharePicker />
       <DownloadToast />
+      <AIriIntegration enabled={uiPrefs.features.airi} />
     </div>
   );
 }

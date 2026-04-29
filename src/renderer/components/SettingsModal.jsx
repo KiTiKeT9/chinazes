@@ -889,6 +889,7 @@ export default function SettingsModal({
                       { id: 'apps',     label: 'Приложения',    desc: 'Игры и web-приложения' },
                       { id: 'ai',       label: 'AI чат',        desc: 'Чат-ассистент в боковой панели' },
                       { id: 'notes',    label: 'Заметки',       desc: 'Локальные заметки' },
+                      { id: 'airi',     label: 'AIri Companion',          desc: 'Виртуальный AI-компаньон с музыкой и танцами' },
                     ].map((f) => (
                       <label key={f.id} className="feature-toggle">
                         <span className="feature-toggle__meta">

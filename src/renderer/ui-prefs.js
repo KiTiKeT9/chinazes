@@ -17,6 +17,7 @@ const DEFAULTS = {
     apps: true,
     ai: true,
     notes: true,
+    airi: false,
   },
 };
 

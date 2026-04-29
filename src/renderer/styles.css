@@ -1978,8 +1978,10 @@ input[type="text"].input--dark::placeholder {
   flex-direction: column;
   gap: 10px;
 }
-.notes-list::-webkit-scrollbar { width: 6px; }
-.notes-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+.notes-list::-webkit-scrollbar { display: none; }
+.notes-list { scrollbar-width: none; -ms-overflow-style: none; }
+.notes-list { cursor: grab; }
+.notes-list:active { cursor: grabbing; }
 
 .notes-empty { color: var(--fg-mute); font-size: 12.5px; text-align: center; padding: 18px; }
 
@@ -1999,11 +2001,11 @@ input[type="text"].input--dark::placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
-  max-height: 280px;
   overflow: hidden;
+  min-height: 100px;
 }
 .note-card__preview img,
-.note-card__preview video { max-width: 100%; max-height: 280px; display: block; }
+.note-card__preview video { max-width: 100%; max-height: 400px; display: block; }
 .note-card__preview audio { width: 100%; padding: 8px; }
 .note-card__text {
   margin: 0;
@@ -2031,25 +2033,30 @@ input[type="text"].input--dark::placeholder {
   bottom: 0;
 }
 .note-card__btns { display: flex; gap: 4px; flex-shrink: 0; }
-.note-card { display: flex; flex-direction: column; }
-.note-card__preview { flex: 1 1 auto; min-height: 0; }
+.note-card { display: flex; flex-direction: column; flex-shrink: 0; }
 .note-card__preview img { cursor: zoom-in; }
 
 /* Lightbox for image/video preview on click */
 .note-lightbox {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.85);
-  backdrop-filter: blur(4px);
   z-index: 200;
   display: flex; align-items: center; justify-content: center;
+}
+.note-lightbox__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(4px);
   cursor: zoom-out;
 }
 .note-lightbox img,
 .note-lightbox video {
+  position: relative;
   max-width: 92vw;
   max-height: 92vh;
   box-shadow: 0 20px 60px rgba(0,0,0,0.6);
   border-radius: 12px;
+  z-index: 1;
 }
 .note-lightbox__close {
   position: absolute;
@@ -2061,8 +2068,22 @@ input[type="text"].input--dark::placeholder {
   color: #fff;
   font-size: 22px; line-height: 1;
   cursor: pointer;
+  z-index: 2;
 }
 .note-lightbox__close:hover { background: rgba(255,255,255,0.22); }
+.note-lightbox__hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: rgba(255,255,255,0.6);
+  font-size: 13px;
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 20px;
+  z-index: 2;
+  pointer-events: none;
+}
 
 /* Panel-wide drop overlay */
 .notes-panel--drop-active::after {
@@ -2144,6 +2165,623 @@ input[type="text"].input--dark::placeholder {
 .strat__tag--bad { background: rgba(255,90,90,0.16);  color: #ff9a9a; border: 1px solid rgba(255,90,90,0.28); }
 .strat__item--broken { opacity: 0.65; }
 .strat__item--broken .strat__title { color: var(--fg-dim); }
+
+/* ---------- AIri Integration (Project AIri from GitHub) ---------- */
+
+/* Launcher Button */
+.airi-launcher-btn {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-radius: 30px;
+  border: 2px solid var(--accent);
+  background: linear-gradient(135deg, var(--bg-2), var(--bg-3));
+  color: var(--fg);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 1000;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 20px color-mix(in oklab, var(--accent) 30%, transparent);
+  transition: all 0.2s;
+}
+.airi-launch-big:hover {
+  transform: scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 229, 255, 0.3);
+}
+
+.airi-launch-big.download {
+  background: linear-gradient(135deg, #00d2d3, #01a3a4);
+  box-shadow: 0 10px 30px rgba(0, 210, 211, 0.3);
+}
+
+.airi-launch-big.download:hover {
+  box-shadow: 0 20px 40px rgba(0, 210, 211, 0.4);
+}
+
+.airi-download-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.airi-size-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fg-mute);
+  margin: 0;
+}
+
+.airi-download-progress {
+  width: 100%;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.airi-progress-bar {
+  height: 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.airi-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00d2d3, #00e5ff);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.airi-progress-text {
+  font-size: 12px;
+  color: var(--fg-mute);
+  text-align: center;
+}
+
+.airi-launcher-icon { color: var(--accent); }
+.airi-running-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80;
+  animation: airi-pulse 1.5s ease-in-out infinite;
+}
+@keyframes airi-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+/* Main Panel Container */
+.airi-panel-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.airi-panel {
+  position: fixed;
+  width: 1000px;
+  height: 800px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  z-index: 9999;
+}
+
+.airi-panel.dragging {
+  box-shadow: 0 60px 100px rgba(0,0,0,0.8);
+  border-color: var(--accent);
+}
+
+/* Compact Mode */
+.airi-panel.compact-mode {
+  width: 500px;
+  height: 700px;
+}
+
+.airi-panel.compact-mode .airi-panel-header {
+  opacity: 1;
+  height: auto;
+  padding: 12px 16px;
+}
+
+/* Header */
+.airi-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+}
+
+.airi-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.airi-panel-title svg { color: var(--accent); }
+.airi-status-badge {
+  margin-left: 10px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.airi-status-badge.running {
+  background: rgba(74, 222, 128, 0.2);
+  color: #4ade80;
+}
+.airi-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.airi-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.05);
+  color: var(--fg-dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.airi-action-btn:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--fg);
+}
+.airi-action-btn.primary {
+  background: var(--accent);
+  color: #0c0c0e;
+  border-color: var(--accent);
+}
+.airi-action-btn.primary:hover {
+  filter: brightness(1.1);
+}
+.airi-action-btn.danger {
+  background: rgba(255,90,90,0.2);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+.airi-action-btn.close:hover {
+  background: rgba(255,90,90,0.2);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+/* Settings Panel */
+.airi-settings {
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.2);
+  max-height: 300px;
+  overflow-y: auto;
+}
+.airi-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+  padding: 20px;
+}
+.airi-setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.airi-setting-group.checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.airi-setting-group.checkbox input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.airi-setting-group label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg-mute);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.airi-setting-group.checkbox label {
+  text-transform: none;
+  font-weight: 400;
+}
+.airi-select, .airi-input {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.3);
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.airi-select:focus, .airi-input:focus {
+  border-color: var(--accent);
+}
+
+/* Model Selection Grid */
+.airi-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.airi-model-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.airi-model-card:hover {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
+  background: rgba(255,255,255,0.05);
+}
+.airi-model-card.active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+}
+.airi-model-icon {
+  font-size: 24px;
+}
+.airi-model-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.airi-model-type {
+  font-size: 10px;
+  color: var(--fg-mute);
+  text-transform: uppercase;
+}
+
+.airi-store-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--fg-mute);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.airi-store-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Panel Content */
+.airi-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Webview Container */
+.airi-webview-container {
+  flex: 1;
+  position: relative;
+  background: #000;
+}
+.airi-webview {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+/* Placeholder when not running */
+.airi-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px;
+  text-align: center;
+}
+.airi-placeholder-icon {
+  color: var(--accent);
+  opacity: 0.8;
+}
+.airi-placeholder h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--fg);
+  margin: 0;
+}
+.airi-placeholder p {
+  font-size: 14px;
+  color: var(--fg-mute);
+  margin: 0;
+}
+.airi-features {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin: 16px 0;
+}
+.airi-features span {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+.airi-launch-big {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 32px;
+  border-radius: 12px;
+  border: none;
+  background: var(--accent);
+  color: #0c0c0e;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.airi-launch-big:hover {
+  transform: scale(1.05);
+  filter: brightness(1.1);
+}
+.airi-launch-big:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Spin Animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Model Store Modal */
+.airi-store-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.9);
+  backdrop-filter: blur(10px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.airi-store-modal {
+  width: 100%;
+  max-width: 900px;
+  max-height: 80vh;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.airi-store-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.airi-store-header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 20px;
+  color: var(--fg);
+}
+.airi-store-header h2 svg {
+  color: var(--accent);
+}
+.airi-store-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.05);
+  color: var(--fg-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.airi-store-close:hover {
+  background: rgba(255,90,90,0.2);
+  border-color: #ff6b6b;
+  color: #ff6b6b;
+}
+
+.airi-store-filters {
+  display: flex;
+  gap: 8px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.2);
+}
+.airi-filter-btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--fg-mute);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+}
+.airi-filter-btn:hover {
+  border-color: var(--accent);
+  color: var(--fg);
+}
+.airi-filter-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0c0c0e;
+}
+
+.airi-store-grid {
+  flex: 1;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+  padding: 24px;
+}
+.airi-store-item {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  overflow: hidden;
+  transition: all 0.15s;
+}
+.airi-store-item:hover {
+  border-color: color-mix(in oklab, var(--accent) 50%, var(--border));
+  transform: translateY(-2px);
+}
+.airi-store-item-preview {
+  height: 120px;
+  background: linear-gradient(135deg, var(--bg-3), var(--bg));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.airi-store-item-image {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 16px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+  transition: transform 0.3s, box-shadow 0.3s;
+  animation: float 3s ease-in-out infinite;
+}
+
+.airi-store-item:hover .airi-store-item-image {
+  transform: scale(1.05);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.4);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+.airi-store-item-type {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.5);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--fg-mute);
+}
+.airi-store-item-info {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.airi-store-item-info h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg);
+}
+.airi-store-item-author {
+  font-size: 11px;
+  color: var(--fg-mute);
+}
+.airi-store-item-stats {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.airi-store-download-btn {
+  margin: 0 14px 14px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+.airi-store-download-btn:hover {
+  background: var(--accent);
+  color: #0c0c0e;
+}
+.airi-store-download-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 
 /* ---------- Free pools ---------- */
 .free-pools { margin: 12px 0 16px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,0.02); }
