@@ -15,11 +15,13 @@ function drawBlob(ctx, cx, cy, radius, alpha, soft, s) {
   ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
 }
 
-export default function EqualizerCanvas({ playing, vertical }) {
+export default function EqualizerCanvas({ playing, vertical, volume }) {
   const canvasRef = useRef(null);
   const sizeRef = useRef({ w: 0, h: 0 });
   const playingRef = useRef(playing);
+  const volumeRef = useRef(volume);
   playingRef.current = playing;
+  volumeRef.current = volume;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -42,16 +44,11 @@ export default function EqualizerCanvas({ playing, vertical }) {
     const dpr = window.devicePixelRatio || 1;
     let raf;
     let intensity = 0;
-    let micVolume = 0;
-    let micStream = null;
-    let audioCtx = null;
-    let analyser = null;
-    let dataArray = null;
     let frameSkip = 0;
     let frameCount = 0;
     let hidden = false;
 
-    // Stop animation entirely when window is hidden (alt-tab / minimize)
+    // Stop animation when window is hidden (alt-tab / minimize)
     function onVisibility() {
       hidden = document.hidden;
       if (hidden) {
@@ -93,51 +90,14 @@ export default function EqualizerCanvas({ playing, vertical }) {
       }
     }
 
-    // ── Microphone ───────────────────────────────────
-    async function startMic() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const actx = new (window.AudioContext || window.webkitAudioContext)();
-        const src = actx.createMediaStreamSource(stream);
-        const anl = actx.createAnalyser();
-        anl.fftSize = 128;
-        src.connect(anl);
-        const arr = new Uint8Array(anl.frequencyBinCount);
-        micStream = stream;
-        audioCtx = actx;
-        analyser = anl;
-        dataArray = arr;
-      } catch (_) {
-        micStream = null; audioCtx = null; analyser = null;
-      }
-    }
-
-    function stopMic() {
-      if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
-      if (audioCtx) { audioCtx.close(); audioCtx = null; }
-      analyser = null; dataArray = null;
-    }
-
-    function getVolume() {
-      if (!analyser || !dataArray) return 0;
-      analyser.getByteTimeDomainData(dataArray);
-      let sum = 0;
-      for (let i = 0; i < dataArray.length; i++) {
-        const v = dataArray[i] / 128 - 1;
-        sum += v * v;
-      }
-      return Math.min(1, Math.sqrt(sum / dataArray.length) * 3);
-    }
-
     // ── Animation ────────────────────────────────────
     initParticles(0, 0);
     let firstFrame = true;
 
     function scheduleNext() {
-      if (hidden) return; // visibilitychange will resume when shown
+      if (hidden) return;
       const { w, h } = sizeRef.current;
       if (w < 1 || h < 1) {
-        // Deffered resize — check again in 100ms instead of busy-looping rAF
         raf = setTimeout(() => requestAnimationFrame(animate), 100);
         return;
       }
@@ -162,17 +122,12 @@ export default function EqualizerCanvas({ playing, vertical }) {
       if (firstFrame) { initParticles(cw, ch); firstFrame = false; }
 
       const isPlaying = playingRef.current;
+      const mediaVol = volumeRef.current;
 
-      if (isPlaying && !micStream) startMic();
-      if (!isPlaying && micStream) stopMic();
-
-      if (isPlaying) micVolume = getVolume();
-      else micVolume *= 0.93;
-
-      const target = isPlaying ? Math.min(1, micVolume * 2.5 + 0.08) : 0;
+      // Drive intensity from media volume + playing state (no microphone)
+      const target = isPlaying ? Math.min(1, mediaVol * 1.5 + 0.1) : 0;
       intensity += (target - intensity) * 0.05;
 
-      // Frame skip throttle
       frameCount++;
       const shouldDraw = frameSkip === 0 || (frameCount % (frameSkip + 1)) === 0;
 
@@ -212,7 +167,7 @@ export default function EqualizerCanvas({ playing, vertical }) {
             const radius = p.baseR * dpr * pulse * soundBlow;
             const breathe = 0.8 + 0.2 * Math.sin(t * 0.3 + p.lifePhase * 1.5);
             const soundBoost = s * 0.3;
-            const alpha = p.baseAlpha * breathe * verticalFade * (1.0 + soundBoost) * (0.6 + micVolume * 0.4);
+            const alpha = p.baseAlpha * breathe * verticalFade * (1.0 + soundBoost) * (0.6 + volumeRef.current * 0.4);
             if (alpha < 0.005) continue;
 
             drawBlob(ctx, p.x + wobble, p.y, radius, alpha, [0.6, 0.4, 0.2, 0.0][p.layer], s);
@@ -247,7 +202,7 @@ export default function EqualizerCanvas({ playing, vertical }) {
             const radius = p.baseR * dpr * pulse * soundBlow;
             const breathe = 0.8 + 0.2 * Math.sin(t * 0.3 + p.lifePhase * 1.5);
             const soundBoost = s * 0.3;
-            const alpha = p.baseAlpha * breathe * horizFade * (1.0 + soundBoost) * (0.6 + micVolume * 0.4);
+            const alpha = p.baseAlpha * breathe * horizFade * (1.0 + soundBoost) * (0.6 + volumeRef.current * 0.4);
             if (alpha < 0.005) continue;
 
             drawBlob(ctx, p.x + wobble, p.y, radius, alpha, [0.6, 0.4, 0.2, 0.0][p.layer], s);
@@ -263,7 +218,6 @@ export default function EqualizerCanvas({ playing, vertical }) {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
       if (raf) { cancelAnimationFrame(raf); clearTimeout(raf); }
-      stopMic();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
   }, [vertical]);

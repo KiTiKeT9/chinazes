@@ -146,14 +146,16 @@ export default function Sidebar({
 }) {
   const [dragging, setDragging] = useState(false);
   const [mediaPlaying, setMediaPlaying] = useState(false);
+  const [mediaVolume, setMediaVolume] = useState(0);
   const [mediaAccent, setMediaAccent] = useState(services.find((s) => s.id === active)?.accent || '#888');
 
   useEffect(() => {
     function onMedia(ev) {
       const { serviceId, state } = ev.detail || {};
-      if (!serviceId || !state) { setMediaPlaying(false); return; }
+      if (!serviceId || !state) { setMediaPlaying(false); setMediaVolume(0); return; }
       const playing = !state.paused && state.duration > 0;
       setMediaPlaying(playing);
+      setMediaVolume(state.volume || 0);
       if (playing) {
         const svc = services.find((s) => s.id === serviceId);
         if (svc?.accent) setMediaAccent(svc.accent);
@@ -165,7 +167,7 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar">
-      <EqualizerCanvas playing={mediaPlaying} vertical />
+      <EqualizerCanvas playing={mediaPlaying} vertical volume={mediaVolume} />
       <div className="sidebar__logo">
         <SidebarAvatar playing={mediaPlaying} accent={mediaAccent} />
       </div>

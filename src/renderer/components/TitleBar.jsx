@@ -22,7 +22,7 @@ function AIIcon() {
   );
 }
 
-export default function TitleBar({ title, proxyStatus, serverName, onReload, onOpenAI, activeServiceId, mediaPlaying }) {
+export default function TitleBar({ title, proxyStatus, serverName, onReload, onOpenAI, activeServiceId, mediaPlaying, mediaVolume }) {
   const api = window.chinazes?.window;
   const [version, setVersion] = useState('');
   const [stats, setStats] = useState({ rxBps: 0, txBps: 0 });
@@ -41,7 +41,7 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload, onO
 
   return (
     <div className="titlebar">
-      <EqualizerCanvas playing={mediaPlaying} />
+      <EqualizerCanvas playing={mediaPlaying} volume={mediaVolume} />
       <img className="titlebar__watermark" src="previev.png" alt="" draggable={false} />
       <div className="titlebar__drag">
         <span className="titlebar__title">

@@ -96,6 +96,7 @@ export default function App() {
   });
   const [mediaPlaying, setMediaPlaying] = useState(false);
   const [mediaAccent, setMediaAccent] = useState('#5865f2');
+  const [mediaVolume, setMediaVolume] = useState(0);
 
   const webviewRefs = useRef({});
   const dragRef = useRef(null);
@@ -150,9 +151,10 @@ export default function App() {
   useEffect(() => {
     function onMedia(ev) {
       const { serviceId, state } = ev.detail || {};
-      if (!serviceId || !state) { setMediaPlaying(false); return; }
+      if (!serviceId || !state) { setMediaPlaying(false); setMediaVolume(0); return; }
       const playing = !state.paused && state.duration > 0;
       setMediaPlaying(playing);
+      setMediaVolume(state.volume || 0);
       if (playing) {
         const svc = allServices.find((s) => s.id === serviceId);
         if (svc?.accent) setMediaAccent(svc.accent);
@@ -355,6 +357,7 @@ export default function App() {
         onOpenAI={uiPrefs.features.ai ? () => setAiChatOpen(true) : null}
         activeServiceId={active}
         mediaPlaying={mediaPlaying}
+        mediaVolume={mediaVolume}
       />
       <div className="app__body">
         <Sidebar

@@ -148,10 +148,12 @@ const WEBVIEW_PRELOAD = path.join(__dirname, 'webview-preload.js');
 // Default Chrome UA — applied to every session at creation time. Without this,
 // Electron's UA contains "Electron/<ver>" which Discord (and others) detect and
 // use to disable features like screen-sharing, native push, etc.
-// Chrome version is pulled dynamically from the embedded Chromium to stay current.
+// Chrome version is pulled dynamically from the embedded Chromium, floored at 135
+// to avoid YouTube serving different codecs to "older" browsers.
 const _chromeVer = process.versions.chrome;
-const _chromeMajor = _chromeVer.split('.')[0];
-const DEFAULT_CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${_chromeVer} Safari/537.36`;
+const _chromeMajor = String(Math.max(parseInt(_chromeVer.split('.')[0], 10), 135));
+const _chromeMinor = _chromeMajor === '135' ? '0.0.0' : _chromeVer.split('.').slice(1).join('.');
+const DEFAULT_CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${_chromeMajor}.${_chromeMinor} Safari/537.36`;
 
 // Chrome's client-hints headers (Sec-CH-UA*). Electron's default emits
 // "Chromium" + "Not A Brand" instead of "Google Chrome", which strict sites
