@@ -1,17 +1,32 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const STORE_KEY = 'chinazes:note-categories';
+const DEFAULT_CATS = ['Видео', 'Фото', 'Ссылки', 'Разное'];
+
+function loadCats() {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; }
+  } catch {}
+  return DEFAULT_CATS;
+}
+
 export default function NotesPanel({ open, onClose }) {
   const [notes, setNotes] = useState([]);
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
   const [hover, setHover] = useState(false);
-  const [lightbox, setLightbox] = useState(null); // { type, url } | null
+  const [lightbox, setLightbox] = useState(null);
+  const [search, setSearch] = useState('');
+  const [activeCat, setActiveCat] = useState('all');
+  const [cats, setCats] = useState(loadCats);
+  const [newCatName, setNewCatName] = useState('');
+  const [showCatManager, setShowCatManager] = useState(false);
   const fileInputRef = useRef(null);
   const dragCounterRef = useRef(0);
   const notesListRef = useRef(null);
 
-  // Drag-to-scroll state
   const isDragging = useRef(false);
   const startY = useRef(0);
   const scrollTop = useRef(0);
@@ -20,12 +35,13 @@ export default function NotesPanel({ open, onClose }) {
     try {
       const list = await window.chinazes.notes.list();
       setNotes(list || []);
+      const c = await window.chinazes.notes.getCategories();
+      if (Array.isArray(c) && c.length) setCats(c);
     } catch (e) { console.error(e); }
   }, []);
 
   useEffect(() => { if (open) reload(); }, [open, reload]);
 
-  // Refresh when a video download finishes (or any other 'notes:changed' event).
   useEffect(() => {
     if (!window.chinazes?.notes?.onDownloadProgress) return;
     const off = window.chinazes.notes.onDownloadProgress((p) => {
@@ -34,9 +50,6 @@ export default function NotesPanel({ open, onClose }) {
     return () => off?.();
   }, [reload]);
 
-  // Close on outside click. Backdrop is pointer-events:none (so chats below stay
-  // interactive), so we can't rely on backdrop onClick — listen at the document
-  // level and check whether the target is inside the panel.
   useEffect(() => {
     if (!open) return;
     const onDocMouseDown = (e) => {
@@ -47,7 +60,6 @@ export default function NotesPanel({ open, onClose }) {
     return () => document.removeEventListener('mousedown', onDocMouseDown, true);
   }, [open, onClose]);
 
-  // Listen for clipboard paste of images while panel is open.
   useEffect(() => {
     if (!open) return;
     const onPaste = async (e) => {
@@ -58,7 +70,6 @@ export default function NotesPanel({ open, onClose }) {
           const f = it.getAsFile();
           if (f) { await uploadFile(f); added = true; }
         } else if (it.kind === 'string' && it.type === 'text/plain' && !added) {
-          // only if no file was pasted
           it.getAsString(async (s) => {
             if (s && s.trim()) { await window.chinazes.notes.add({ text: s }); reload(); }
           });
@@ -70,20 +81,17 @@ export default function NotesPanel({ open, onClose }) {
     return () => document.removeEventListener('paste', onPaste);
   }, [open, reload]);
 
-  // ESC key to close lightbox
   useEffect(() => {
     if (!lightbox) return;
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') setLightbox(null);
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
+    function onKeyDown(e) {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setLightbox(null); }
+    }
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
   }, [lightbox]);
 
-  // Drag-to-scroll handlers (only middle mouse button)
   const handleMouseDown = (e) => {
-    if (e.button !== 1) return; // Only middle mouse button
-    // Don't start drag if clicking on interactive elements
+    if (e.button !== 1) return;
     const tag = e.target.tagName.toLowerCase();
     if (tag === 'img' || tag === 'video' || tag === 'button' || tag === 'input' || tag === 'a') return;
     const el = notesListRef.current;
@@ -94,96 +102,82 @@ export default function NotesPanel({ open, onClose }) {
     el.style.cursor = 'grabbing';
     e.preventDefault();
   };
-
   const handleMouseMove = (e) => {
     if (!isDragging.current) return;
     e.preventDefault();
     const el = notesListRef.current;
-    if (!el) return;
-    const deltaY = startY.current - e.clientY;
-    el.scrollTop = scrollTop.current + deltaY;
+    if (el) el.scrollTop = scrollTop.current + (startY.current - e.clientY);
   };
-
-  const handleMouseUp = (e) => {
+  const handleMouseUp = () => {
     if (!isDragging.current) return;
     isDragging.current = false;
-    const el = notesListRef.current;
-    if (el) el.style.cursor = '';
+    if (notesListRef.current) notesListRef.current.style.cursor = '';
   };
 
-  async function uploadFile(file) {
-    setBusy(true);
-    try {
-      const buf = await file.arrayBuffer();
-      const b64 = arrayBufferToBase64(buf);
-      await window.chinazes.notes.add({
-        type: typeFromMime(file.type, file.name),
-        mime: file.type,
-        name: file.name,
-        dataBase64: b64,
-      });
-    } finally { setBusy(false); }
-  }
-
-  function typeFromMime(mime, name) {
-    const m = (mime || '').toLowerCase();
-    const n = (name || '').toLowerCase();
-    if (m.startsWith('image/gif') || n.endsWith('.gif')) return 'gif';
-    if (m.startsWith('image/'))  return 'image';
-    if (m.startsWith('video/'))  return 'video';
-    if (m.startsWith('audio/'))  return 'audio';
-    return 'file';
-  }
-
-  function arrayBufferToBase64(buf) {
-    const bytes = new Uint8Array(buf);
-    let s = '';
-    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-    return btoa(s);
-  }
-
-  async function onDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setHover(false);
-    const files = Array.from(e.dataTransfer?.files || []);
-    if (!files.length) return;
-    for (const f of files) await uploadFile(f);
+  const onPanelDragEnter = (e) => { e.preventDefault(); dragCounterRef.current++; setHover(true); };
+  const onPanelDragLeave = () => { dragCounterRef.current--; if (dragCounterRef.current <= 0) { dragCounterRef.current = 0; setHover(false); } };
+  const onPanelDragOver = (e) => { e.preventDefault(); };
+  const onDrop = async (e) => {
+    e.preventDefault(); setHover(false); dragCounterRef.current = 0;
+    for (const f of Array.from(e.dataTransfer.files || [])) await uploadFile(f);
     reload();
-  }
+  };
 
-  // Track drag over the whole panel using counters (Firefox/Chromium fire
-  // dragenter/leave for child elements; counter avoids flicker).
-  function onPanelDragEnter(e) {
-    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
-    dragCounterRef.current += 1;
-    setHover(true);
-  }
-  function onPanelDragLeave() {
-    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
-    if (dragCounterRef.current === 0) setHover(false);
-  }
-  function onPanelDragOver(e) {
-    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+  function autoCat(note) {
+    if (note.type === 'video') return 'Видео';
+    if (note.type === 'image' || note.type === 'gif') return 'Фото';
+    if (note.text && /https?:\/\//.test(note.text)) return 'Ссылки';
+    return 'Разное';
   }
 
   async function onAddText() {
     const t = text.trim();
     if (!t) return;
-    await window.chinazes.notes.add({ text: t });
     setText('');
+    const cat = activeCat !== 'all' ? activeCat : (t.match(/https?:\/\//) ? 'Ссылки' : 'Разное');
+    await window.chinazes.notes.add({ text: t, category: cat });
     reload();
   }
 
-  async function onCopy(id)   { await window.chinazes.notes.copy(id); }
-  async function onRemove(id) { await window.chinazes.notes.remove(id); reload(); }
+  async function uploadFile(f) {
+    if (!f) return;
+    setBusy(true);
+    try {
+      const buf = await f.arrayBuffer();
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const type = f.type?.startsWith('image/') ? 'image' : f.type?.startsWith('video/') ? 'video' : 'file';
+      const cat = activeCat !== 'all' ? activeCat : (type === 'video' ? 'Видео' : type === 'image' ? 'Фото' : 'Разное');
+      await window.chinazes.notes.add({
+        name: f.name, type, mime: f.type, dataBase64: base64, label: f.name, category: cat,
+      });
+    } catch (e) { console.error(e); }
+    setBusy(false);
+  }
 
-  // Send image to AI chat for analysis/editing
+  async function onCopy(id)   { try { await window.chinazes.notes.copy(id); } catch (e) { console.warn('[notes] copy failed', e); } }
+  async function onRemove(id) { try { await window.chinazes.notes.remove(id); } catch (e) { console.warn('[notes] remove failed', e); } reload(); }
+  async function onRename(id, label) {
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, label } : n)));
+    try { await window.chinazes.notes.rename(id, label); } catch (e) { console.warn('[notes] rename failed', e); }
+    reload();
+  }
+  async function onSetCat(id, cat) {
+    // Optimistic local update: update notes in state immediately
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, category: cat || undefined } : n)));
+    try { await window.chinazes.notes.setCategory(id, cat); } catch (e) { console.warn('[notes] setCategory failed', e); }
+    reload();
+  }
+
+  function extractUrl(text) {
+    if (!text) return null;
+    const m = text.match(/https?:\/\/[^\s"'<>]+/);
+    if (!m) return null;
+    const original = m[0];
+    const isYT = /(?:youtube\.com|youtu\.be)/i.test(original);
+    return { type: isYT ? 'youtube' : 'other', original };
+  }
+
   function onSendToAI(note) {
-    // Dispatch event that AIChatPanel listens to
     window.dispatchEvent(new CustomEvent('chinazes:send-to-ai', {
       detail: {
         imageUrl: note.fileUrl,
@@ -192,12 +186,37 @@ export default function NotesPanel({ open, onClose }) {
     }));
   }
 
-  // Native OS drag — main process initiates webContents.startDrag with file path.
   function onDragStart(id) {
     try { window.chinazes.notes.drag(id); } catch {}
   }
 
-  return (
+  // Filter notes by search + category
+  const filtered = notes.filter((n) => {
+    if (activeCat !== 'all' && n.category !== activeCat) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const label = (n.label || '').toLowerCase();
+      const textContent = (n.text || '').toLowerCase();
+      if (!label.includes(q) && !textContent.includes(q)) return false;
+    }
+    return true;
+  });
+
+  async function addNewCat() {
+    const n = newCatName.trim();
+    if (!n || cats.includes(n)) return;
+    await window.chinazes.notes.addCategory(n);
+    setCats((prev) => [...prev, n]);
+    setNewCatName('');
+  }
+
+  async function delCat(name) {
+    await window.chinazes.notes.removeCategory(name);
+    setCats((prev) => prev.filter((c) => c !== name));
+    if (activeCat === name) setActiveCat('all');
+  }
+
+  return (<>
     <AnimatePresence>
       {open && (
         <motion.div
@@ -223,132 +242,183 @@ export default function NotesPanel({ open, onClose }) {
             </header>
 
             <div className="notes-drop">
-              <p>Перетащи сюда фото/видео/гифку (или в любое место панели), или вставь из буфера (Ctrl+V).</p>
-              <button
-                className="btn btn--ghost"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={busy}
-              >Выбрать файл</button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept="image/*,video/*,audio/*"
-                hidden
-                onChange={async (e) => {
-                  for (const f of Array.from(e.target.files || [])) await uploadFile(f);
-                  e.target.value = '';
-                  reload();
-                }}
-              />
+              <p>Перетащи сюда фото/видео/гифку, или вставь из буфера (Ctrl+V).</p>
+              <button className="btn btn--ghost" onClick={() => fileInputRef.current?.click()} disabled={busy}>Выбрать файл</button>
+              <input ref={fileInputRef} type="file" multiple accept="image/*,video/*,audio/*" hidden onChange={async (e) => {
+                for (const f of Array.from(e.target.files || [])) await uploadFile(f);
+                e.target.value = '';
+                reload();
+              }} />
             </div>
 
             <div className="notes-text-row">
-              <input
-                className="input"
-                placeholder="Быстрый текст…"
-                value={text}
+              <input className="input" placeholder="Быстрый текст…" value={text}
                 onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') onAddText(); }}
-              />
+                onKeyDown={(e) => { if (e.key === 'Enter') onAddText(); }} />
               <button className="btn btn--primary" onClick={onAddText} disabled={!text.trim()}>+</button>
             </div>
 
-            <div
-              ref={notesListRef}
-              className="notes-list"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-            >
-              {notes.length === 0 && <div className="notes-empty">Пусто. Вставь медиа из буфера или перетащи файл.</div>}
-              {notes.map((n) => (
+            {/* Search */}
+            <div className="notes-search-row">
+              <input className="input" placeholder="🔍 Поиск по названию…" value={search}
+                onChange={(e) => setSearch(e.target.value)} />
+            </div>
+
+            {/* Category tabs */}
+            <div className="notes-cats">
+              <button className={`notes-cat ${activeCat === 'all' ? 'notes-cat--active' : ''}`}
+                onClick={() => setActiveCat('all')}>Все</button>
+              {cats.map((c) => (
+                <button key={c} className={`notes-cat ${activeCat === c ? 'notes-cat--active' : ''}`}
+                  onClick={() => setActiveCat(c)}>{c}</button>
+              ))}
+              <button className="notes-cat notes-cat--manage" onClick={() => setShowCatManager(!showCatManager)}
+                title="Управление категориями">⚙</button>
+            </div>
+
+            {/* Category manager */}
+            <AnimatePresence>
+              {showCatManager && (
+                <motion.div className="notes-cat-mgr" initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}>
+                  <div className="notes-cat-mgr__row">
+                    <input className="input" placeholder="Новая категория…" value={newCatName}
+                      onChange={(e) => setNewCatName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') addNewCat(); }} />
+                    <button className="btn btn--primary btn--small" onClick={addNewCat} disabled={!newCatName.trim()}>+</button>
+                  </div>
+                  <div className="notes-cat-mgr__list">
+                    {cats.map((c) => (
+                      <div key={c} className="notes-cat-mgr__item">
+                        <span>{c}</span>
+                        <button className="btn btn--mini btn--danger" onClick={() => delCat(c)}
+                          title="Удалить категорию">×</button>
+                      </div>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div ref={notesListRef} className="notes-list"
+              onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}>
+              {filtered.length === 0 && <div className="notes-empty">
+                {search ? 'Ничего не найдено.' : 'Пусто. Вставь медиа из буфера или перетащи файл.'}
+              </div>}
+              {filtered.map((n) => (
                 <NoteCard
-                  key={n.id}
-                  note={n}
+                  key={n.id} note={n}
+                  cats={cats}
                   onCopy={() => onCopy(n.id)}
                   onRemove={() => onRemove(n.id)}
+                  onRename={(label) => onRename(n.id, label)}
+                  onSetCat={(cat) => onSetCat(n.id, cat)}
                   onDragStart={() => onDragStart(n.id)}
                   onZoom={() => {
-                    if (n.type === 'image' || n.type === 'gif' || n.type === 'video') {
+                    if (n.type === 'image' || n.type === 'gif' || n.type === 'video')
                       setLightbox({ type: n.type, url: n.fileUrl });
-                    }
                   }}
                   onSendToAI={n.type === 'image' || n.type === 'gif' ? () => onSendToAI(n) : undefined}
+                  onPreviewLink={n.type === 'text' ? () => {
+                    const info = extractUrl(n.text);
+                    if (!info) return;
+                    if (info.type === 'youtube') {
+                      window.chinazes?.youtubeMiniPlayer?.open(info.original).catch(() => window.open(info.original, '_blank', 'noopener'));
+                    } else {
+                      window.open(info.original, '_blank', 'noopener');
+                    }
+                  } : undefined}
+                  onDownloadVideo={n.type === 'text' && /youtu/.test(n.text) ? () => {
+                    const info = extractUrl(n.text);
+                    if (info?.original) window.chinazes?.notes?.downloadVideo?.(info.original);
+                  } : undefined}
                 />
               ))}
             </div>
           </motion.aside>
-
-          {lightbox && (
-            <motion.div
-              className="note-lightbox"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <div className="note-lightbox__backdrop" onClick={() => setLightbox(null)} />
-              {(lightbox.type === 'image' || lightbox.type === 'gif') && (
-                <img
-                  src={lightbox.url}
-                  alt=""
-                  onClick={(e) => e.stopPropagation()}
-                  draggable={false}
-                />
-              )}
-              {lightbox.type === 'video' && (
-                <video
-                  src={lightbox.url}
-                  controls
-                  autoPlay
-                  onClick={(e) => e.stopPropagation()}
-                />
-              )}
-              <button className="note-lightbox__close" onClick={() => setLightbox(null)}>×</button>
-              <div className="note-lightbox__hint">ESC или клик вне изображения — закрыть</div>
-            </motion.div>
-          )}
         </motion.div>
       )}
     </AnimatePresence>
-  );
+    {lightbox && (
+      <div className="note-lightbox" onClick={() => setLightbox(null)}>
+        <div className="note-lightbox__backdrop" />
+        {(lightbox.type === 'image' || lightbox.type === 'gif') && (
+          <img src={lightbox.url} alt="" onClick={(e) => e.stopPropagation()} draggable={false} />
+        )}
+        {lightbox.type === 'video' && (
+          <video src={lightbox.url} controls autoPlay onClick={(e) => e.stopPropagation()} />
+        )}
+        <button className="note-lightbox__close" onClick={(e) => { e.stopPropagation(); setLightbox(null); }}>×</button>
+        <div className="note-lightbox__hint">ESC или клик вне изображения — закрыть</div>
+      </div>
+    )}
+  </>);
 }
 
-function NoteCard({ note, onCopy, onRemove, onDragStart, onZoom, onSendToAI }) {
+function NoteCard({ note, cats, onCopy, onRemove, onRename, onSetCat, onDragStart, onZoom, onSendToAI, onPreviewLink, onDownloadVideo }) {
   const isMedia = note.type === 'image' || note.type === 'gif' || note.type === 'video';
   const isImage = note.type === 'image' || note.type === 'gif';
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState(note.label || '');
+  const [showCatPicker, setShowCatPicker] = useState(false);
+
+  function handleRename() {
+    const v = editVal.trim();
+    if (v && v !== (note.label || '')) onRename(v);
+    setEditing(false);
+  }
+
   return (
-    <div
-      className="note-card"
-      draggable={!!note.fileUrl}
-      onDragStart={onDragStart}
-    >
+    <div className="note-card" draggable={!!note.fileUrl} onDragStart={onDragStart}>
       <div className="note-card__preview" onClick={isMedia ? onZoom : undefined}>
         {note.type === 'text' && <pre className="note-card__text">{note.text}</pre>}
-        {(note.type === 'image' || note.type === 'gif') && (
-          <img src={note.fileUrl} alt={note.label} />
-        )}
-        {note.type === 'video' && (
-          <video src={note.fileUrl} preload="metadata" muted />
-        )}
-        {note.type === 'audio' && (
-          <audio src={note.fileUrl} controls />
-        )}
-        {note.type === 'file' && (
-          <div className="note-card__file">📄 {note.label}</div>
-        )}
+        {(note.type === 'image' || note.type === 'gif') && <img src={note.fileUrl} alt={note.label} />}
+        {note.type === 'video' && <video src={note.fileUrl} preload="metadata" muted />}
+        {note.type === 'audio' && <audio src={note.fileUrl} controls />}
+        {note.type === 'file' && <div className="note-card__file">📄 {note.label}</div>}
       </div>
       <div className="note-card__actions">
-        <span className="note-card__label" title={note.label}>{note.label}</span>
-        <div className="note-card__btns">
-          <button className="btn btn--mini" onClick={onCopy} title="Copy to clipboard">📋</button>
-          {isImage && onSendToAI && (
-            <button className="btn btn--mini" onClick={onSendToAI} title="Отправить в AI">✨</button>
-          )}
-          {isMedia && <span className="note-card__hint" title="Drag to chat">⤴</span>}
-          <button className="btn btn--mini btn--danger" onClick={onRemove} title="Delete">🗑</button>
-        </div>
+        {editing ? (
+          <input className="input note-card__rename-input" value={editVal}
+            onChange={(e) => setEditVal(e.target.value)}
+            onBlur={handleRename}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false); }}
+            autoFocus
+          />
+        ) : (
+          <>
+            <span className="note-card__label" title={note.label} onDoubleClick={() => { setEditVal(note.label || ''); setEditing(true); }}>
+              {note.label}
+              {note.category && <span className="note-card__cat-tag">{note.category}</span>}
+            </span>
+            <div className="note-card__btns">
+              <button className="btn btn--mini" onClick={onCopy} title="Копировать">📋</button>
+              <button className="btn btn--mini" onClick={() => { setEditVal(note.label || ''); setEditing(true); }} title="Переименовать">✏</button>
+              {onPreviewLink && (
+                <button className="btn btn--mini" onClick={onPreviewLink} title="Открыть превью ссылки">🔗</button>
+              )}
+              {onDownloadVideo && (
+                <button className="btn btn--mini" onClick={onDownloadVideo} title="Скачать видео в заметки">📥</button>
+              )}
+              {isImage && onSendToAI && (
+                <button className="btn btn--mini" onClick={onSendToAI} title="Отправить в AI">✨</button>
+              )}
+              {isMedia && <span className="note-card__hint" title="Перетащи в чат">⤴</span>}
+              <button className="btn btn--mini" onClick={() => setShowCatPicker(!showCatPicker)} title="Категория">🏷</button>
+              <button className="btn btn--mini btn--danger" onClick={onRemove} title="Удалить">🗑</button>
+            </div>
+            {showCatPicker && (
+              <div className="note-card__cat-picker" onClick={(e) => e.stopPropagation()}>
+                <button className={`btn btn--mini ${!note.category ? 'btn--primary' : ''}`}
+                  onClick={() => { onSetCat(''); setShowCatPicker(false); }}>Без</button>
+                {cats.map((c) => (
+                  <button key={c} className={`btn btn--mini ${note.category === c ? 'btn--primary' : ''}`}
+                    onClick={() => { onSetCat(c); setShowCatPicker(false); }}>{c}</button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -51,6 +51,11 @@ contextBridge.exposeInMainWorld('chinazes', {
     remove: (id)      => ipcRenderer.invoke('notes:remove', id),
     copy:   (id)      => ipcRenderer.invoke('notes:copy', id),
     drag:   (id)      => ipcRenderer.invoke('notes:drag', id),
+    rename: (id, label) => ipcRenderer.invoke('notes:rename', id, label),
+    setCategory: (id, cat) => ipcRenderer.invoke('notes:set-category', id, cat),
+    getCategories: () => ipcRenderer.invoke('notes:get-categories'),
+    addCategory: (name) => ipcRenderer.invoke('notes:add-category', name),
+    removeCategory: (name) => ipcRenderer.invoke('notes:remove-category', name),
     downloadVideo: (url) => ipcRenderer.invoke('notes:download-video', url),
     onDownloadProgress: (cb) => {
       const fn = (_e, p) => cb(p);
@@ -122,5 +127,53 @@ contextBridge.exposeInMainWorld('chinazes', {
       });
       return () => listeners.forEach(([c, f]) => ipcRenderer.removeListener(c, f));
     },
+  },
+  // AIRI Integration APIs
+  airi: {
+    // Execute a command (media, discord, telegram, web search)
+    executeCommand: (command) => ipcRenderer.invoke('airi:execute-command', command),
+    // Process a message and get response
+    processMessage: (data) => ipcRenderer.invoke('airi:process-message', data),
+    // Web search
+    webSearch: (query, openWindow = false) => ipcRenderer.invoke('airi:web-search', query, openWindow),
+    // Get user context/memory
+    getUserContext: (platformId) => ipcRenderer.invoke('airi:get-user-context', platformId),
+    // Discord bot connection
+    connectDiscord: (token) => ipcRenderer.invoke('airi:discord-connect', token),
+    disconnectDiscord: () => ipcRenderer.invoke('airi:discord-disconnect'),
+    getDiscordStatus: () => ipcRenderer.invoke('airi:discord-status'),
+    // Telegram
+    toggleTelegramAutoReply: (chatId, enabled) => ipcRenderer.invoke('airi:telegram-toggle', chatId, enabled),
+    getTelegramChats: () => ipcRenderer.invoke('airi:telegram-chats'),
+    // Media control
+    mediaControl: (service, action, params = {}) => ipcRenderer.send('airi:media-control', { service, action, ...params }),
+    // Listen for commands from AIRI
+    onCommand: (callback) => {
+      const fn = (_e, cmd) => callback(cmd);
+      ipcRenderer.on('airi:command', fn);
+      return () => ipcRenderer.removeListener('airi:command', fn);
+    },
+    // Listen for incoming messages from Discord/Telegram
+    onIncomingMessage: (callback) => {
+      const fn = (_e, msg) => callback(msg);
+      ipcRenderer.on('airi:incoming-message', fn);
+      return () => ipcRenderer.removeListener('airi:incoming-message', fn);
+    },
+    // Switch service
+    switchService: (serviceId) => ipcRenderer.send('service:switch', serviceId),
+    // Open URL in service
+    openUrl: (url) => ipcRenderer.send('service:open-url', url),
+  },
+  // Media control for ServiceView
+  onMediaControl: (callback) => {
+    const fn = (_e, cmd) => callback(cmd);
+    ipcRenderer.on('media:control', fn);
+    return () => ipcRenderer.removeListener('media:control', fn);
+  },
+  // YouTube Mini Player (Picture-in-Picture)
+  youtubeMiniPlayer: {
+    open: (videoUrl) => ipcRenderer.invoke('youtube-miniplayer:open', videoUrl),
+    close: () => ipcRenderer.invoke('youtube-miniplayer:close'),
+    isOpen: () => ipcRenderer.invoke('youtube-miniplayer:is-open'),
   },
 });

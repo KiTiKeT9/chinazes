@@ -9,7 +9,8 @@ const crypto = require('node:crypto');
 
 let notesDir;
 let indexPath;
-let index = []; // [{ id, type, ext, file, label, createdAt, mime, text? }]
+let index = []; // [{ id, type, ext, file, label, createdAt, mime, text?, category? }]
+let categories = ['Видео', 'Фото', 'Ссылки', 'Разное'];
 
 function init() {
   notesDir = path.join(app.getPath('userData'), 'notes');
@@ -17,14 +18,23 @@ function init() {
   fs.mkdirSync(notesDir, { recursive: true });
   try {
     const raw = fs.readFileSync(indexPath, 'utf8');
-    index = JSON.parse(raw);
-    if (!Array.isArray(index)) index = [];
-  } catch { index = []; }
+    const data = JSON.parse(raw);
+    // Support both old format (array) and new format ({ index, categories })
+    if (Array.isArray(data)) {
+      index = data;
+      categories = ['Видео', 'Фото', 'Ссылки', 'Разное'];
+    } else {
+      index = data.index || [];
+      categories = data.categories || ['Видео', 'Фото', 'Ссылки', 'Разное'];
+    }
+  } catch { index = []; categories = ['Видео', 'Фото', 'Ссылки', 'Разное']; }
 }
 
 function saveIndex() {
-  try { fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf8'); }
-  catch (e) { console.error('[notes] saveIndex failed:', e?.message); }
+  try {
+    const data = JSON.stringify({ index, categories }, null, 2);
+    fs.writeFileSync(indexPath, data, 'utf8');
+  } catch (e) { console.error('[notes] saveIndex failed:', e?.message); }
 }
 
 function detectType(mime, name) {
@@ -44,18 +54,56 @@ function publicNote(n) {
 }
 
 // Register custom protocol that maps chinazes-note://<filename> -> notes/<filename>.
+// Handles Range requests so video/audio can seek beyond the first few seconds.
 function registerProtocol() {
-  protocol.handle('chinazes-note', (req) => {
+  protocol.handle('chinazes-note', async (req) => {
     try {
       const url = new URL(req.url);
-      // Hostname is the filename in chinazes-note://<filename>
       const filename = decodeURIComponent(url.hostname || url.pathname.replace(/^\//, ''));
-      // Defence: keep within notesDir
       const full = path.join(notesDir, filename);
-      if (!full.startsWith(notesDir)) {
-        return new Response('forbidden', { status: 403 });
+      if (!full.startsWith(notesDir)) return new Response('forbidden', { status: 403 });
+
+      const stat = await fs.promises.stat(full).catch(() => null);
+      if (!stat) return new Response('not found', { status: 404 });
+
+      const rangeHeader = req.headers.get('range');
+      if (rangeHeader) {
+        const match = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+        if (match) {
+          const start = parseInt(match[1], 10);
+          const end = match[2] ? parseInt(match[2], 10) : stat.size - 1;
+          const chunkSize = end - start + 1;
+          const stream = fs.createReadStream(full, { start, end });
+          return new Response(stream, {
+            status: 206,
+            headers: {
+              'Content-Range': `bytes ${start}-${end}/${stat.size}`,
+              'Content-Type': 'video/mp4',
+              'Content-Length': String(chunkSize),
+              'Accept-Ranges': 'bytes',
+            },
+          });
+        }
       }
-      return net.fetch(`file://${full.replace(/\\/g, '/')}`);
+
+      // No Range header → serve the whole file
+      const mime = filename.endsWith('.mp4') ? 'video/mp4'
+        : filename.endsWith('.webm') ? 'video/webm'
+        : filename.endsWith('.mkv') ? 'video/x-matroska'
+        : filename.endsWith('.png') ? 'image/png'
+        : filename.endsWith('.jpg') || filename.endsWith('.jpeg') ? 'image/jpeg'
+        : filename.endsWith('.gif') ? 'image/gif'
+        : filename.endsWith('.webp') ? 'image/webp'
+        : 'application/octet-stream';
+      const source = fs.createReadStream(full);
+      return new Response(source, {
+        status: 200,
+        headers: {
+          'Content-Type': mime,
+          'Content-Length': String(stat.size),
+          'Accept-Ranges': 'bytes',
+        },
+      });
     } catch (e) {
       return new Response(String(e), { status: 500 });
     }
@@ -66,7 +114,7 @@ function list() {
   return index.slice().sort((a, b) => b.createdAt - a.createdAt).map(publicNote);
 }
 
-function add({ type, mime, name, dataBase64, text, label }) {
+function add({ type, mime, name, dataBase64, text, label, category }) {
   const id = crypto.randomBytes(6).toString('hex');
   const createdAt = Date.now();
   let entry;
@@ -86,6 +134,7 @@ function add({ type, mime, name, dataBase64, text, label }) {
       createdAt,
     };
   }
+  if (category) entry.category = category;
   index.unshift(entry);
   saveIndex();
   return publicNote(entry);
@@ -170,13 +219,54 @@ function startDrag(senderWc, id) {
   }
 }
 
+function rename(id, label) {
+  const n = index.find((x) => x.id === id);
+  if (!n) return false;
+  n.label = String(label || '').trim() || n.label;
+  saveIndex();
+  return true;
+}
+
+function setCategory(id, cat) {
+  const n = index.find((x) => x.id === id);
+  if (!n) return false;
+  n.category = cat || undefined;
+  saveIndex();
+  return true;
+}
+
+function getCategories() { return categories.slice(); }
+
+function addCategory(name) {
+  const n = (name || '').trim();
+  if (!n || categories.includes(n)) return false;
+  categories.push(n);
+  saveIndex();
+  return true;
+}
+
+function removeCategory(name) {
+  const i = categories.indexOf(name);
+  if (i < 0) return false;
+  categories.splice(i, 1);
+  // Unset this category from all notes
+  for (const n of index) { if (n.category === name) n.category = undefined; }
+  saveIndex();
+  return true;
+}
+
 function register() {
   registerProtocol();
-  ipcMain.handle('notes:list',   () => list());
-  ipcMain.handle('notes:add',    (_e, payload) => add(payload || {}));
-  ipcMain.handle('notes:remove', (_e, id)      => remove(id));
-  ipcMain.handle('notes:copy',   (_e, id)      => copyToClipboard(id));
-  ipcMain.handle('notes:drag',   (e, id)       => startDrag(e.sender, id));
+  ipcMain.handle('notes:list',            () => list());
+  ipcMain.handle('notes:add',             (_e, payload) => add(payload || {}));
+  ipcMain.handle('notes:remove',          (_e, id)      => remove(id));
+  ipcMain.handle('notes:copy',            (_e, id)      => copyToClipboard(id));
+  ipcMain.handle('notes:drag',            (e, id)       => startDrag(e.sender, id));
+  ipcMain.handle('notes:rename',          (_e, id, label) => rename(id, label));
+  ipcMain.handle('notes:set-category',    (_e, id, cat) => setCategory(id, cat));
+  ipcMain.handle('notes:get-categories',  ()            => getCategories());
+  ipcMain.handle('notes:add-category',    (_e, name)    => addCategory(name));
+  ipcMain.handle('notes:remove-category', (_e, name)    => removeCategory(name));
 }
 
 module.exports = { init, register, addExistingFile, getNotesDir };

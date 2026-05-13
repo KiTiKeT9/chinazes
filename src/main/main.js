@@ -219,7 +219,10 @@ function suppressSecurityPrompts(ses) {
   // Some Chromium permissions are checked synchronously (e.g. Notification.permission)
   // and need a separate handler — without this, sites see "default" / "denied" and
   // never even ask the user, so desktop notifications stay silent.
+  // Notifications always granted — site-side patch in webview-preload.js
+  // relies on Notification.permission === 'granted' to fire.
   ses.setPermissionCheckHandler((_wc, perm) => {
+    if (perm === 'notifications') return true;
     if (['usb', 'serial', 'hid', 'bluetooth'].includes(perm)) return false;
     return true;
   });
@@ -430,6 +433,8 @@ function createYouTubeMiniPlayer(videoUrl) {
 
   ipcMain.on('youtube-miniplayer:drag-start', () => {
     if (!youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    // If maximized, restore before dragging (native Windows behavior)
+    if (youtubeMiniPlayer.isMaximized()) youtubeMiniPlayer.unmaximize();
     dragStartPos = youtubeMiniPlayer.getPosition();
     isDragging = true;
   });
@@ -445,10 +450,30 @@ function createYouTubeMiniPlayer(videoUrl) {
     dragStartPos = null;
   });
 
+  // ── Resize handlers ──
+  let resizeStartSize = null;
+  ipcMain.on('youtube-miniplayer:resize-start', () => {
+    if (!youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    if (youtubeMiniPlayer.isMaximized()) youtubeMiniPlayer.unmaximize();
+    resizeStartSize = youtubeMiniPlayer.getSize();
+  });
+  ipcMain.on('youtube-miniplayer:resize-move', (_e, { dw, dh }) => {
+    if (!resizeStartSize || !youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    const [w, h] = resizeStartSize;
+    const newW = Math.max(360, Math.min(1400, w + dw));
+    const newH = Math.max(240, Math.min(1000, h + dh));
+    youtubeMiniPlayer.setSize(newW, newH);
+  });
+  ipcMain.on('youtube-miniplayer:resize-end', () => {
+    resizeStartSize = null;
+  });
+
   ipcMain.on('youtube-miniplayer:toggle-maximize', () => {
     if (!youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
     if (youtubeMiniPlayer.isMaximized()) {
       youtubeMiniPlayer.unmaximize();
+      // Restore to a reasonable default size
+      youtubeMiniPlayer.setSize(560, 380);
     } else {
       youtubeMiniPlayer.maximize();
     }

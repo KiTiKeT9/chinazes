@@ -35,23 +35,28 @@ export default function NotificationsBell() {
   useEffect(() => { saveHistory(items); }, [items]);
   useEffect(() => { localStorage.setItem('chinazes:notif-unread', String(unread)); }, [unread]);
 
-  // Notification sound — respects chinazes:notif-sound toggle, volume, and custom URL
+  // Notification sound — reads current settings from localStorage on each play
   const audioRef = useRef(null);
-  const soundEnabled = localStorage.getItem('chinazes:notif-sound') !== '0';
-  const soundUrl = localStorage.getItem('chinazes:notif-sound-url') || 'notif.mp3';
-  const soundVolume = (() => {
-    const v = parseInt(localStorage.getItem('chinazes:notif-sound-volume') || '50', 10);
-    return Number.isFinite(v) ? Math.max(0, Math.min(1, v / 100)) : 0.5;
-  })();
   useEffect(() => {
     if (typeof Audio === 'undefined') return;
-    const a = new Audio(soundUrl);
-    a.volume = soundVolume;
+    const a = new Audio('notif.mp3');
+    a.volume = 0.5;
     audioRef.current = a;
     return () => { a.pause(); a.src = ''; };
-  }, [soundUrl, soundVolume]);
+  }, []);
 
   useEffect(() => {
+    function readVol() {
+      const v = parseInt(localStorage.getItem('chinazes:notif-sound-volume') || '50', 10);
+      return Number.isFinite(v) ? Math.max(0, Math.min(1, v / 100)) : 0.5;
+    }
+    function readEnabled() {
+      return localStorage.getItem('chinazes:notif-sound') !== '0';
+    }
+    function readUrl() {
+      return localStorage.getItem('chinazes:notif-sound-url') || 'notif.mp3';
+    }
+
     function onNotif(ev) {
       const d = ev.detail || {};
       const p = d.payload || {};
@@ -71,14 +76,24 @@ export default function NotificationsBell() {
         return next.slice(0, MAX_KEEP);
       });
       setUnread((n) => n + 1);
-      // Play notification sound (if enabled)
-      if (soundEnabled) {
-        try { audioRef.current?.cloneNode(true).play?.(); } catch {}
+      // Read current settings from localStorage on every notification
+      if (readEnabled()) {
+        try {
+          const a = audioRef.current;
+          if (a) {
+            a.volume = readVol();
+            const url = readUrl();
+            if (a.src !== url && a.src !== window.location.origin + '/' + url) {
+              a.src = url;
+            }
+            a.cloneNode(true).play?.();
+          }
+        } catch {}
       }
     }
     window.addEventListener('chinazes-notification', onNotif);
     return () => window.removeEventListener('chinazes-notification', onNotif);
-  }, [soundEnabled]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
