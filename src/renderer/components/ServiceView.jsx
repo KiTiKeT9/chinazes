@@ -43,7 +43,7 @@ function loadLastUrl(serviceId, fallback) {
   return fallback;
 }
 
-export default function ServiceView({ service, visible, registerRef }) {
+export default function ServiceView({ service, visible, registerRef, mediaServiceId }) {
   const ref = useRef(null);
   const [loading, setLoading] = useState(true);
   // Use the last-known URL (persisted across app restarts) as initial src.
@@ -73,7 +73,7 @@ export default function ServiceView({ service, visible, registerRef }) {
       } else if (e.channel === 'chinazes:media-state') {
         try {
           window.dispatchEvent(new CustomEvent('chinazes-media-state', {
-            detail: { serviceId: service.id, state: e.args?.[0] || null, sender: wv },
+            detail: { serviceId: mediaServiceId || service.id, state: e.args?.[0] || null, sender: wv },
           }));
         } catch {}
       } else if (e.channel === 'chinazes:notification') {

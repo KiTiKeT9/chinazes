@@ -1,6 +1,6 @@
 {
   "name": "chinazes",
-  "version": "1.18.1",
+  "version": "1.18.2",
   "description": "Desktop hub with Project AIri integration (Live2D/VRM avatars, model store), Zapret 2, AI assistant, notes, games, co-browsing and Xray/v2ray proxy.",
   "main": "src/main/main.js",
   "scripts": {

@@ -39,7 +39,7 @@ function loadTabs(service) {
   return { tabs: [t], activeId: t.id };
 }
 
-export default function TabbedServiceView({ service, visible, registerRef }) {
+export default function TabbedServiceView({ service, visible, registerRef, mediaServiceId }) {
   const initial = useRef(loadTabs(service)).current;
   const [tabs, setTabs] = useState(initial.tabs);
   const [activeId, setActiveId] = useState(initial.activeId);
@@ -104,7 +104,7 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
       } else if (ev.channel === 'chinazes:media-state') {
         try {
           window.dispatchEvent(new CustomEvent('chinazes-media-state', {
-            detail: { serviceId: service.id, state: ev.args?.[0] || null, sender: wv },
+            detail: { serviceId: mediaServiceId || service.id, state: ev.args?.[0] || null, sender: wv },
           }));
         } catch {}
       } else if (ev.channel === 'chinazes:notification') {

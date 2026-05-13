@@ -28,8 +28,12 @@ const videoDownloader = require('./video-downloader');
 const aiProvider = require('./ai-provider');
 const appsScanner = require('./apps-scanner');
 const netMonitor = require('./net-monitor');
+const { getOrchestrator } = require('./airi-orchestrator');
+const { getTelegramBridge } = require('./telegram-bridge');
+const { getWebSearch } = require('./web-search');
 
 let mainWindow;
+let youtubeMiniPlayer; // YouTube mini player window (picture-in-picture style)
 
 // Single-instance: if another copy of Chinazes is already running, focus it and quit.
 const gotLock = app.requestSingleInstanceLock();
@@ -144,14 +148,16 @@ const WEBVIEW_PRELOAD = path.join(__dirname, 'webview-preload.js');
 // Default Chrome UA — applied to every session at creation time. Without this,
 // Electron's UA contains "Electron/<ver>" which Discord (and others) detect and
 // use to disable features like screen-sharing, native push, etc.
-const DEFAULT_CHROME_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36';
+// Chrome version is pulled dynamically from the embedded Chromium to stay current.
+const _chromeVer = process.versions.chrome;
+const _chromeMajor = _chromeVer.split('.')[0];
+const DEFAULT_CHROME_UA = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${_chromeVer} Safari/537.36`;
 
 // Chrome's client-hints headers (Sec-CH-UA*). Electron's default emits
 // "Chromium" + "Not A Brand" instead of "Google Chrome", which strict sites
 // (Spotify, VK, banking portals) treat as suspicious and trap in a redirect
-// loop. We rewrite these on every webview request to mimic real Chrome 135.
-const CH_UA       = '"Google Chrome";v="135", "Chromium";v="135", "Not.A/Brand";v="99"';
+// loop. We rewrite these on every webview request to mimic real Chrome.
+const CH_UA       = `"Google Chrome";v="${_chromeMajor}", "Chromium";v="${_chromeMajor}", "Not.A/Brand";v="99"`;
 const CH_UA_MOBILE = '?0';
 const CH_UA_PLAT   = '"Windows"';
 
@@ -326,6 +332,20 @@ app.whenReady().then(async () => {
   aiProvider.init();
   aiProvider.register();
   appsScanner.register();
+  
+  // Initialize AIRI modules
+  const orchestrator = getOrchestrator();
+  orchestrator.setMainWindow(mainWindow);
+  orchestrator.setAIProvider(aiProvider);
+  
+  const telegramBridge = getTelegramBridge();
+  telegramBridge.setOrchestratorCallback((data) => {
+    // Forward to orchestrator
+    orchestrator.processMessage(data);
+  });
+  
+  // Register AIRI IPC handlers
+  registerAIRIHandlers(orchestrator, telegramBridge);
 
   proxyManager.init({
     userDataDir: app.getPath('userData'),
@@ -355,6 +375,133 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', async () => {
   await proxyManager.stop().catch(() => {});
   if (process.platform !== 'darwin') app.quit();
+});
+
+// --------- YouTube Mini Player ----------
+function createYouTubeMiniPlayer(videoUrl) {
+  if (youtubeMiniPlayer && !youtubeMiniPlayer.isDestroyed()) {
+    youtubeMiniPlayer.focus();
+    if (videoUrl) {
+      youtubeMiniPlayer.webContents.loadURL(videoUrl);
+    }
+    return youtubeMiniPlayer;
+  }
+
+  youtubeMiniPlayer = new BrowserWindow({
+    width: 560,
+    height: 380,
+    minWidth: 360,
+    minHeight: 240,
+    maxWidth: 1400,
+    maxHeight: 1000,
+    title: 'YouTube Mini Player',
+    icon: path.join(__dirname, '../../resources/icon.ico'),
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    resizable: true,
+    frame: false,
+    roundedCorners: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'miniplayer-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false,
+      partition: 'persist:youtube',
+    },
+  });
+
+  // Load YouTube with the current video URL or just YouTube
+  const url = videoUrl || 'https://www.youtube.com/';
+  youtubeMiniPlayer.loadURL(url);
+
+  // Apply security/proxy settings
+  const ses = youtubeMiniPlayer.webContents.session;
+  suppressSecurityPrompts(ses);
+  proxyManager.applyToSession(ses).catch(() => {});
+
+  // Title bar is injected via miniplayer-preload.js
+  // This is more reliable than executeJavaScript
+
+  // Handle window drag events
+  let dragStartPos = null;
+  let isDragging = false;
+
+  ipcMain.on('youtube-miniplayer:drag-start', () => {
+    if (!youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    dragStartPos = youtubeMiniPlayer.getPosition();
+    isDragging = true;
+  });
+
+  ipcMain.on('youtube-miniplayer:drag-move', (_e, { deltaX, deltaY }) => {
+    if (!isDragging || !dragStartPos || !youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    const [x, y] = dragStartPos;
+    youtubeMiniPlayer.setPosition(x + deltaX, y + deltaY);
+  });
+
+  ipcMain.on('youtube-miniplayer:drag-end', () => {
+    isDragging = false;
+    dragStartPos = null;
+  });
+
+  ipcMain.on('youtube-miniplayer:toggle-maximize', () => {
+    if (!youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    if (youtubeMiniPlayer.isMaximized()) {
+      youtubeMiniPlayer.unmaximize();
+    } else {
+      youtubeMiniPlayer.maximize();
+    }
+  });
+
+  ipcMain.on('youtube-miniplayer:minimize', () => {
+    if (!youtubeMiniPlayer || youtubeMiniPlayer.isDestroyed()) return;
+    youtubeMiniPlayer.minimize();
+  });
+
+  youtubeMiniPlayer.on('closed', () => {
+    youtubeMiniPlayer = null;
+  });
+
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development') {
+    youtubeMiniPlayer.webContents.openDevTools({ mode: 'detach' });
+  }
+
+  return youtubeMiniPlayer;
+}
+
+function closeYouTubeMiniPlayer() {
+  if (youtubeMiniPlayer && !youtubeMiniPlayer.isDestroyed()) {
+    youtubeMiniPlayer.close();
+    youtubeMiniPlayer = null;
+  }
+}
+
+function isYouTubeMiniPlayerOpen() {
+  return youtubeMiniPlayer && !youtubeMiniPlayer.isDestroyed();
+}
+
+// IPC handlers for YouTube mini player
+ipcMain.handle('youtube-miniplayer:open', (_e, videoUrl) => {
+  createYouTubeMiniPlayer(videoUrl);
+  return { success: true };
+});
+
+ipcMain.handle('youtube-miniplayer:close', () => {
+  closeYouTubeMiniPlayer();
+  return { success: true };
+});
+
+ipcMain.handle('youtube-miniplayer:is-open', () => {
+  return isYouTubeMiniPlayerOpen();
+});
+
+// Handle close request from mini player window itself
+ipcMain.on('youtube-miniplayer:request-close', (_e) => {
+  // Check if sender is the mini player window
+  const senderWindow = BrowserWindow.fromWebContents(_e.sender);
+  if (senderWindow === youtubeMiniPlayer) {
+    closeYouTubeMiniPlayer();
+  }
 });
 
 app.on('activate', () => {
@@ -498,4 +645,119 @@ ipcMain.handle('zapret-panel:test-connection', async () => {
 app.on('before-quit', () => {
   // Cleanup code here
 });
+
+// --------- AIRI Integration IPC Handlers ---------
+function registerAIRIHandlers(orchestrator, telegramBridge) {
+  const webSearch = getWebSearch();
+  
+  // Process message (from Discord/Telegram or voice chat)
+  ipcMain.handle('airi:process-message', async (event, data) => {
+    return await orchestrator.processMessage(data);
+  });
+
+  // Execute command (media, discord, telegram)
+  ipcMain.handle('airi:execute-command', async (event, command) => {
+    return await orchestrator.executeCommand(command);
+  });
+
+  // Web search
+  ipcMain.handle('airi:web-search', async (event, query, openWindow) => {
+    return await webSearch.explicitSearch(query, openWindow);
+  });
+
+  // Get user context/memory
+  ipcMain.handle('airi:get-user-context', (event, platformId) => {
+    const { getUserMemory } = require('./user-memory');
+    return getUserMemory().getUserContext(platformId);
+  });
+
+  // Discord bot handlers
+  let discordBotInstance = null;
+  
+  ipcMain.handle('airi:discord-connect', async (event, token) => {
+    try {
+      // Store token in environment for the bot
+      process.env.DISCORD_TOKEN = token;
+      
+      // Dynamic import for ES module Discord bot (must specify file:// for Windows paths)
+      const botPath = require('path').join(__dirname, '../../discord-bot/src/bot.js');
+      const { default: discordBot } = await import('file://' + botPath);
+      discordBotInstance = discordBot;
+      
+      // Set up bridge
+      discordBot.setBridge({
+        requestResponse: async (data) => {
+          return await orchestrator.processMessage(data);
+        },
+        emit: (event, data) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(`discord:${event}`, data);
+          }
+        },
+      });
+      
+      const success = await discordBot.start();
+      orchestrator.setDiscordBot(discordBot);
+      return { success, status: discordBot.client?.user?.tag || 'connecting' };
+    } catch (error) {
+      console.error('[AIRI] Discord connect error:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('airi:discord-disconnect', async () => {
+    if (discordBotInstance) {
+      await discordBotInstance.stop();
+      discordBotInstance = null;
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('airi:discord-status', () => {
+    if (!discordBotInstance?.client?.isReady()) {
+      return { connected: false };
+    }
+    return {
+      connected: true,
+      tag: discordBotInstance.client.user.tag,
+      guilds: discordBotInstance.client.guilds.cache.size,
+      autoReplyChannels: discordBotInstance.autoReplyEnabled.size,
+    };
+  });
+
+  // Telegram handlers
+  ipcMain.handle('airi:telegram-toggle', (event, chatId, enabled) => {
+    return telegramBridge.toggleAutoReply(chatId, enabled);
+  });
+
+  ipcMain.handle('airi:telegram-chats', async () => {
+    return await telegramBridge.listChats();
+  });
+
+  // Media control - forward to webviews
+  ipcMain.on('airi:media-control', (event, { service, action, ...params }) => {
+    // Find the webview for this service and send command
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('media:control', { service, action, ...params });
+    }
+    // Also send to YouTube window if it's open and this is a YouTube command
+    if (youtubeWindow && !youtubeWindow.isDestroyed() && (service === 'youtube' || service === 'current')) {
+      youtubeWindow.webContents.send('media:control', { service, action, ...params });
+    }
+  });
+
+  // Service switching
+  ipcMain.on('service:switch', (event, serviceId) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('service:switch', serviceId);
+    }
+  });
+
+  // Open URL in service
+  ipcMain.on('service:open-url', (event, url) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('service:open-url', url);
+    }
+  });
+}
 

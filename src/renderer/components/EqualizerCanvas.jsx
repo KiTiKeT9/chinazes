@@ -49,6 +49,19 @@ export default function EqualizerCanvas({ playing, vertical }) {
     let dataArray = null;
     let frameSkip = 0;
     let frameCount = 0;
+    let hidden = false;
+
+    // Stop animation entirely when window is hidden (alt-tab / minimize)
+    function onVisibility() {
+      hidden = document.hidden;
+      if (hidden) {
+        if (raf) { cancelAnimationFrame(raf); clearTimeout(raf); raf = null; }
+      } else {
+        raf = requestAnimationFrame(animate);
+      }
+    }
+    onVisibility();
+    document.addEventListener('visibilitychange', onVisibility);
 
     // ── Particle system ──────────────────────────────
     let particles = [];
@@ -121,19 +134,26 @@ export default function EqualizerCanvas({ playing, vertical }) {
     let firstFrame = true;
 
     function scheduleNext() {
+      if (hidden) return; // visibilitychange will resume when shown
+      const { w, h } = sizeRef.current;
+      if (w < 1 || h < 1) {
+        // Deffered resize — check again in 100ms instead of busy-looping rAF
+        raf = setTimeout(() => requestAnimationFrame(animate), 100);
+        return;
+      }
       const isPlaying = playingRef.current;
       if (!isPlaying && intensity < 0.001) {
-        // Idle: check back at 2 fps to detect when playing resumes
         raf = setTimeout(() => requestAnimationFrame(animate), 500);
         return;
       }
-      if (intensity < 0.02) frameSkip = 5;   // ~12 fps
-      else if (intensity < 0.06) frameSkip = 2; // ~30 fps
-      else frameSkip = 0;                      // 60 fps
+      if (intensity < 0.02) frameSkip = 5;
+      else if (intensity < 0.06) frameSkip = 2;
+      else frameSkip = 0;
       raf = requestAnimationFrame(animate);
     }
 
     function animate(time) {
+      if (hidden) return;
       const { w, h } = sizeRef.current;
       const cw = w * dpr;
       const ch = h * dpr;
@@ -240,6 +260,7 @@ export default function EqualizerCanvas({ playing, vertical }) {
 
     raf = requestAnimationFrame(animate);
     return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('resize', resize);
       if (raf) { cancelAnimationFrame(raf); clearTimeout(raf); }
       stopMic();

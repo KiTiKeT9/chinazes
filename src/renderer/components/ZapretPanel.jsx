@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 // Replicates the Zapret 2 main page: status cards + quick actions.
 // Doesn't embed the actual Zapret window (admin/UIPI restrictions).
@@ -11,6 +11,7 @@ export default function ZapretPanel({ visible, onOpenSettings }) {
   const [error, setError]     = useState('');
   const [testing, setTesting] = useState(false);
   const [test, setTest]       = useState(null);
+  const pollSkipRef = useRef(0); // skip 2 of 3 polls when running
 
   async function refresh() {
     try {
@@ -22,13 +23,21 @@ export default function ZapretPanel({ visible, onOpenSettings }) {
     }
   }
 
-  // Poll while visible.
+  // Poll while visible — 10s interval to reduce tasklist.exe spawns.
   useEffect(() => {
     if (!visible) return;
     refresh();
-    const t = setInterval(refresh, 3000);
+    const t = setInterval(refresh, 10000);
     return () => clearInterval(t);
   }, [visible]);
+
+  // Wrap refresh: skip 2 of 3 polls when zapret is running (saves CPU)
+  const origRefresh = refresh;
+  refresh = async () => {
+    if (pollSkipRef.current > 0) { pollSkipRef.current--; return; }
+    await origRefresh();
+    if (status?.bypassActive) pollSkipRef.current = 2;
+  };
 
   async function action(name, fn) {
     try {

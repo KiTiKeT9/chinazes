@@ -418,6 +418,7 @@ export default function App() {
                         key={`sec-${svc.id}`}
                         service={{ ...svc, partition: `${svc.partition}` }}
                         visible
+                        mediaServiceId={`sec-${svc.id}`}
                         registerRef={(el) => { webviewRefs.current[`sec-${svc.id}`] = el; }}
                       />
                     );
