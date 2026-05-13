@@ -84,6 +84,19 @@ export default function ServiceView({ service, visible, registerRef }) {
         } catch {}
       }
     };
+
+    // Listen for media control commands from main process
+    const mediaControlHandler = (_, cmd) => {
+      // Check if this command is for this service
+      if (cmd.service === 'current' || cmd.service === service.id) {
+        try {
+          wv.send('media:control', cmd);
+        } catch (e) {
+          console.warn('[ServiceView] Failed to send media:control:', e);
+        }
+      }
+    };
+    
     const onNavigate = (e) => {
       // Persist last URL so the next app start opens where the user left off.
       try {
@@ -99,6 +112,12 @@ export default function ServiceView({ service, visible, registerRef }) {
     wv.addEventListener('ipc-message', onIpc);
     wv.addEventListener('did-navigate', onNavigate);
     wv.addEventListener('did-navigate-in-page', onNavigate);
+    
+    let mediaControlCleanup = null;
+    if (window.chinazes?.onMediaControl) {
+      mediaControlCleanup = window.chinazes.onMediaControl(mediaControlHandler);
+    }
+    
     return () => {
       wv.removeEventListener('did-start-loading', onStart);
       wv.removeEventListener('did-stop-loading', onStop);
@@ -106,13 +125,14 @@ export default function ServiceView({ service, visible, registerRef }) {
       wv.removeEventListener('ipc-message', onIpc);
       wv.removeEventListener('did-navigate', onNavigate);
       wv.removeEventListener('did-navigate-in-page', onNavigate);
+      mediaControlCleanup?.();
       registerRef?.(null);
     };
   }, [registerRef, service.id]);
 
   // Built-in defaults — services where audio should keep playing in background
-  // (voice calls, streams, music). Custom services default to `true` (assume
-  // user added them for media). Per-service overrides via Settings.
+  // (voice calls, streams, music). Custom services default to `false` (user can
+  // enable manually via Settings). Per-service overrides via Settings.
   const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic', 'vk', 'youtube']);
   function loadKeepAudioBg(id, isCustom) {
     try {
@@ -120,14 +140,21 @@ export default function ServiceView({ service, visible, registerRef }) {
       if (raw === '1') return true;
       if (raw === '0') return false;
     } catch {}
-    return isCustom ? true : KEEP_AUDIO_BG_DEFAULTS.has(id);
+    return isCustom ? false : KEEP_AUDIO_BG_DEFAULTS.has(id);
   }
 
-  // Track whether the user has visited this service at least once. Until then,
-  // we keep it muted even if it allows background audio — otherwise auto-play
-  // sites (Twitch / Spotify) blare on app launch.
-  const wasVisibleRef = useRef(false);
-  if (visible) wasVisibleRef.current = true;
+  // Track whether the user has spent >3s on this service at least once.
+  // Until then, background audio is blocked — prevents autoplay on launch.
+  // Once eligible it stays true (even when switching tabs) so music/calls
+  // keep playing in background as long as the per-service toggle is on.
+  const visitTimerRef = useRef(null);
+  const [bgEligible, setBgEligible] = useState(false);
+  useEffect(() => {
+    if (visible && !bgEligible) {
+      visitTimerRef.current = setTimeout(() => setBgEligible(true), 3000);
+    }
+    return () => clearTimeout(visitTimerRef.current);
+  }, [visible]);
 
   // Re-read pref on every visibility flip and on storage events from Settings.
   const [keepBg, setKeepBg] = useState(() => loadKeepAudioBg(service.id, !!service.custom));
@@ -148,10 +175,10 @@ export default function ServiceView({ service, visible, registerRef }) {
   useEffect(() => {
     const wv = ref.current;
     if (!wv) return;
-    const allowBg = keepBg && wasVisibleRef.current;
+    const allowBg = keepBg && bgEligible;
     const shouldMute = !visible && !allowBg;
     try { wv.setAudioMuted?.(shouldMute); } catch {}
-  }, [visible, keepBg, service.id]);
+  }, [visible, keepBg, bgEligible, service.id]);
 
   return (
     <motion.div

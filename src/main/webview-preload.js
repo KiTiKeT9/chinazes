@@ -407,11 +407,141 @@ window.addEventListener('message', (e) => {
   } catch {}
 });
 
+// ----------------- Telegram Bridge (for AIRI integration) -----------------
+const telegramBridge = (function () {
+  const isTelegram = location.hostname.includes('web.telegram.org');
+  if (!isTelegram) return null;
+
+  function findChatList() {
+    return document.querySelector('.chat-list, .ChatsMain, [class*="chat-list"]');
+  }
+
+  function findActiveChat() {
+    const active = document.querySelector('.chat.active, .ChatInfo, [class*="chat"][class*="active"]');
+    return active;
+  }
+
+  function extractMessages(chatElement, limit = 50) {
+    const messages = [];
+    const msgElements = chatElement?.querySelectorAll('.message, .Message, [class*="message"]') || [];
+    
+    msgElements.forEach((el, idx) => {
+      if (idx >= limit) return;
+      const textEl = el.querySelector('.message-text, .text-content, [class*="text"]');
+      const authorEl = el.querySelector('.message-author, .sender-name, [class*="sender"]');
+      const timeEl = el.querySelector('.message-time, .time, [class*="time"]');
+      
+      messages.push({
+        id: el.dataset.id || String(idx),
+        text: textEl?.textContent?.trim() || '',
+        author: authorEl?.textContent?.trim() || 'Unknown',
+        timestamp: timeEl?.textContent?.trim() || '',
+        isOutgoing: el.classList.contains('outgoing') || el.classList.contains('message-out'),
+      });
+    });
+    
+    return messages;
+  }
+
+  function sendMessage(chatId, text) {
+    // Try to find and focus input
+    const input = document.querySelector('.message-input-field, .NewMessage textarea, [contenteditable="true"]');
+    if (!input) return { success: false, error: 'Input not found' };
+    
+    // Set text
+    input.textContent = text;
+    input.value = text;
+    
+    // Trigger input events
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    
+    // Find and click send button
+    setTimeout(() => {
+      const sendBtn = document.querySelector('.send-button, .btn-send, button[type="submit"]');
+      if (sendBtn) sendBtn.click();
+    }, 100);
+    
+    return { success: true };
+  }
+
+  function getChatList() {
+    const chats = [];
+    const chatElements = document.querySelectorAll('.chat, .Chat, [class*="chat-item"]');
+    
+    chatElements.forEach((el, idx) => {
+      const nameEl = el.querySelector('.chat-title, .ChatTitle, [class*="title"]');
+      const previewEl = el.querySelector('.chat-preview, .last-message, [class*="preview"]');
+      
+      if (nameEl) {
+        chats.push({
+          id: el.dataset.chatId || `chat_${idx}`,
+          name: nameEl.textContent?.trim() || 'Unknown',
+          preview: previewEl?.textContent?.trim() || '',
+        });
+      }
+    });
+    
+    return chats;
+  }
+
+  // Observer for new messages
+  let messageObserver = null;
+  function observeMessages(callback) {
+    if (messageObserver) messageObserver.disconnect();
+    
+    const chatContainer = document.querySelector('.messages-container, .MessagesList, .history-inner');
+    if (!chatContainer) return;
+    
+    messageObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === 1 && node.classList?.contains('message')) {
+            const textEl = node.querySelector('.message-text, .text-content');
+            const authorEl = node.querySelector('.message-author, .sender-name');
+            
+            if (textEl) {
+              callback({
+                type: 'new_message',
+                text: textEl.textContent?.trim() || '',
+                author: authorEl?.textContent?.trim() || 'Unknown',
+                isIncoming: !node.classList.contains('outgoing'),
+                chatId: findActiveChat()?.dataset?.id || 'unknown',
+              });
+            }
+          }
+        });
+      });
+    });
+    
+    messageObserver.observe(chatContainer, { childList: true, subtree: true });
+  }
+
+  // Notify Chinazes that Telegram is ready
+  try {
+    ipcRenderer.sendToHost('telegram:ready', { url: location.href });
+  } catch {}
+
+  return {
+    getMessages: extractMessages,
+    sendMessage,
+    listChats: getChatList,
+    observeMessages,
+    getActiveChat: () => findActiveChat()?.dataset?.id,
+  };
+})();
+
+// Expose for main process to call via executeJavaScript
+try {
+  if (typeof contextBridge !== 'undefined' && contextBridge.exposeInMainWorld) {
+    contextBridge.exposeInMainWorld('telegramBridge', telegramBridge || {});
+  } else {
+    window.telegramBridge = telegramBridge || {};
+  }
+} catch {}
+
 // ----------------- Media bridge -----------------
 // Polls the page for the most-relevant <video>/<audio> + navigator.mediaSession
-// metadata and forwards it to the host (renderer) via sendToHost. The host
-// renders a unified music bar in the TitleBar and can issue commands back
-// (play/pause/seek/volume/next/prev).
 (function () {
   if (typeof document === 'undefined') return;
 
@@ -491,7 +621,120 @@ window.addEventListener('message', (e) => {
           if (btn) btn.click();
           break;
         }
+        case 'search': {
+          // Service-specific search
+          const host = location.hostname;
+          let searchInput = null;
+          let searchBtn = null;
+          
+          if (host.includes('youtube.com')) {
+            searchInput = document.querySelector('input#search, input[name="search_query"]');
+            searchBtn = document.querySelector('button#search-icon-legacy, button[aria-label*="Search"]');
+          } else if (host.includes('spotify.com')) {
+            searchInput = document.querySelector('input[data-testid="search-input"], input[placeholder*="Search"]');
+          } else if (host.includes('vk.com') || host.includes('vk.ru')) {
+            searchInput = document.querySelector('#wall_search, input[placeholder*="Поиск"], input[placeholder*="Search"]');
+          }
+          
+          if (searchInput && cmd.query) {
+            searchInput.value = cmd.query;
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            if (searchBtn) searchBtn.click();
+          }
+          break;
+        }
+        case 'open': {
+          if (cmd.url) {
+            window.location.href = cmd.url;
+          }
+          break;
+        }
       }
     } catch (e) { console.warn('[media-cmd]', e); }
   });
+})();
+
+// YouTube Mini Player button interception
+(function youtubeMiniPlayerIntercept() {
+  if (!location.hostname.includes('youtube.com')) return;
+
+  let isProcessingMiniPlayer = false;
+
+  function interceptMiniPlayer() {
+    // YouTube's mini player button selector
+    const miniPlayerBtn = document.querySelector('button[title="Miniplayer" i], button[aria-label*="Miniplayer" i], button[title="Mini player" i], button[aria-label*="Mini player" i], .ytp-miniplayer-button, button[data-tooltip-text*="mini" i]');
+
+    if (miniPlayerBtn && !miniPlayerBtn._chinazesIntercepted) {
+      miniPlayerBtn._chinazesIntercepted = true;
+
+      miniPlayerBtn.addEventListener('click', async (e) => {
+        if (isProcessingMiniPlayer) return;
+
+        // Get current video URL
+        const videoId = new URLSearchParams(window.location.search).get('v');
+        const playlistId = new URLSearchParams(window.location.search).get('list');
+
+        if (videoId) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          isProcessingMiniPlayer = true;
+
+          // Build the mini player URL (current video, miniplayer mode)
+          let miniPlayerUrl = `https://www.youtube.com/watch?v=${videoId}`;
+          if (playlistId) {
+            miniPlayerUrl += `&list=${playlistId}`;
+          }
+
+          // Pause the main video before opening mini player
+          const video = document.querySelector('video');
+          if (video) {
+            video.pause();
+          }
+
+          // Open mini player through the main process
+          try {
+            await ipcRenderer.invoke('youtube-miniplayer:open', miniPlayerUrl);
+          } catch (err) {
+            console.error('[YouTube MiniPlayer] Failed to open:', err);
+          }
+
+          // Reset after a short delay
+          setTimeout(() => { isProcessingMiniPlayer = false; }, 500);
+        }
+      }, true);
+    }
+  }
+
+  // Watch for dynamic button creation
+  const startObserving = () => {
+    const target = document.body || document.documentElement;
+    if (!target) {
+      setTimeout(startObserving, 100);
+      return;
+    }
+    
+    const observer = new MutationObserver(() => {
+      interceptMiniPlayer();
+    });
+    
+    try {
+      observer.observe(target, {
+        childList: true,
+        subtree: true
+      });
+    } catch (e) {
+      console.warn('[MiniPlayer] Observer failed:', e);
+    }
+    
+    // Initial check
+    interceptMiniPlayer();
+  };
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startObserving);
+  } else {
+    startObserving();
+  }
 })();

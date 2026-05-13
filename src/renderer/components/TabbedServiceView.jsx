@@ -137,8 +137,8 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
   // Mute audio of non-active tabs and non-visible service to prevent background autoplay.
   // Exception: services with the per-service "keep audio in background" flag keep
   // playing while service is hidden so calls/streams/music don't drop on tab
-  // switch — but ONLY after the user has visited the service at least once
-  // (otherwise YouTube / Twitch / etc. autoplay at launch).
+  // switch — but ONLY after the service has been visible for >3 s (to prevent
+  // accidental tab switches from enabling background audio).
   const KEEP_AUDIO_BG_DEFAULTS = new Set(['discord', 'telegram', 'twitch', 'spotify', 'yamusic', 'vk', 'youtube']);
   function loadKeepAudioBg(id, isCustom) {
     try {
@@ -146,10 +146,16 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
       if (raw === '1') return true;
       if (raw === '0') return false;
     } catch {}
-    return isCustom ? true : KEEP_AUDIO_BG_DEFAULTS.has(id);
+    return isCustom ? false : KEEP_AUDIO_BG_DEFAULTS.has(id);
   }
-  const wasVisibleRef = useRef(false);
-  if (visible) wasVisibleRef.current = true;
+  const visitTimerRef = useRef(null);
+  const [bgEligible, setBgEligible] = useState(false);
+  useEffect(() => {
+    if (visible && !bgEligible) {
+      visitTimerRef.current = setTimeout(() => setBgEligible(true), 3000);
+    }
+    return () => clearTimeout(visitTimerRef.current);
+  }, [visible]);
   const [keepBg, setKeepBg] = useState(() => loadKeepAudioBg(service.id, !!service.custom));
   useEffect(() => {
     const onPrefs = (e) => {
@@ -169,11 +175,11 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
       if (!wv) return;
       const inactiveTab = id !== activeId;
       const hiddenService = !visible;
-      const allowBg = keepBg && wasVisibleRef.current;
+      const allowBg = keepBg && bgEligible;
       const mute = inactiveTab || (hiddenService && !allowBg);
       try { wv.setAudioMuted?.(mute); } catch {}
     });
-  }, [visible, activeId, tabs, service.id, keepBg]);
+  }, [visible, activeId, tabs, service.id, keepBg, bgEligible]);
 
   return (
     <motion.div
@@ -193,7 +199,10 @@ export default function TabbedServiceView({ service, visible, registerRef }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className={`tab-chip ${t.id === activeId ? 'tab-chip--active' : ''}`}
-              onClick={() => setActiveId(t.id)}
+              onClick={() => {
+                setActiveId(t.id);
+                navigator.clipboard.writeText(t.url).catch(() => {});
+              }}
               style={{ '--accent': service.accent }}
               title={t.url}
             >

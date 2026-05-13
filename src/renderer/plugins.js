@@ -115,23 +115,26 @@ export const BUILTIN_PLUGINS = [
           if (!actions) return;
           const btn = document.createElement('button');
           btn.className = '__chinazes-dl-btn';
-          btn.innerHTML = '⬇ <span>В заметки</span>';
+          btn.textContent = '⬇ ';
+          const label = document.createElement('span');
+          label.textContent = 'В заметки';
+          btn.appendChild(label);
           btn.onclick = (ev) => {
             ev.preventDefault();
             try {
               btn.disabled = true;
-              btn.querySelector('span').textContent = 'Скачиваю...';
+              label.textContent = 'Скачиваю...';
               if (window.chinazesGuest && window.chinazesGuest.downloadVideo) {
                 window.chinazesGuest.downloadVideo(location.href);
                 setTimeout(() => {
                   btn.disabled = false;
-                  btn.querySelector('span').textContent = 'В заметки';
+                  label.textContent = 'В заметки';
                 }, 3000);
               } else {
-                btn.querySelector('span').textContent = '⚠ Bridge не доступен';
+                label.textContent = '⚠ Bridge не доступен';
               }
             } catch (e) {
-              btn.querySelector('span').textContent = '⚠ ' + e.message;
+              label.textContent = '⚠ ' + e.message;
             }
           };
           actions.appendChild(btn);

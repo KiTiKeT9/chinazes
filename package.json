@@ -1,6 +1,6 @@
 {
   "name": "chinazes",
-  "version": "1.17.0",
+  "version": "1.18.0",
   "description": "Desktop hub with Project AIri integration (Live2D/VRM avatars, model store), Zapret 2, AI assistant, notes, games, co-browsing and Xray/v2ray proxy.",
   "main": "src/main/main.js",
   "scripts": {
@@ -16,6 +16,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@nut-tree/nut-js": "^3.1.2",
     "electron-updater": "^6.8.3",
     "framer-motion": "^11.11.17",
     "peerjs": "^1.5.5",

@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { ReloadIcon } from './Icons.jsx';
 import MusicBar from './MusicBar.jsx';
 import NotificationsBell from './NotificationsBell.jsx';
+import EqualizerCanvas from './EqualizerCanvas.jsx';
 
 function fmtBps(bps) {
   if (!bps || bps < 1) return '0 B/s';
@@ -21,7 +22,7 @@ function AIIcon() {
   );
 }
 
-export default function TitleBar({ title, proxyStatus, serverName, onReload, onOpenAI }) {
+export default function TitleBar({ title, proxyStatus, serverName, onReload, onOpenAI, activeServiceId, mediaPlaying }) {
   const api = window.chinazes?.window;
   const [version, setVersion] = useState('');
   const [stats, setStats] = useState({ rxBps: 0, txBps: 0 });
@@ -40,6 +41,8 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload, onO
 
   return (
     <div className="titlebar">
+      <EqualizerCanvas playing={mediaPlaying} />
+      <img className="titlebar__watermark" src="previev.png" alt="" draggable={false} />
       <div className="titlebar__drag">
         <span className="titlebar__title">
           {title}
@@ -52,7 +55,7 @@ export default function TitleBar({ title, proxyStatus, serverName, onReload, onO
         </span>
       </div>
       <NotificationsBell />
-      <MusicBar />
+      <MusicBar activeServiceId={activeServiceId} />
       <div className="titlebar__netstats" title="Системный сетевой трафик">
         <span className="netstats__line">
           <span className="netstats__arrow netstats__arrow--down">↓</span>

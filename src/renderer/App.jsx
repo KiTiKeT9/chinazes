@@ -86,6 +86,7 @@ export default function App() {
   const [aiChatOpen, setAiChatOpen] = useState(false);
   const [appsOpen, setAppsOpen] = useState(false);
   const [coBrowseOpen, setCoBrowseOpen] = useState(false);
+  const [youtubeMiniPlayerOpen, setYoutubeMiniPlayerOpen] = useState(false);
   const [uiPrefs, setUiPrefs] = useState(loadUIPrefs);
   const [proxyState, setProxyState] = useState({
     status: 'disconnected',
@@ -93,6 +94,8 @@ export default function App() {
     server: null,
     socksPort: 10808,
   });
+  const [mediaPlaying, setMediaPlaying] = useState(false);
+  const [mediaAccent, setMediaAccent] = useState('#5865f2');
 
   const webviewRefs = useRef({});
   const dragRef = useRef(null);
@@ -118,6 +121,46 @@ export default function App() {
     const off = window.chinazes.proxy.onState(setProxyState);
     return () => off?.();
   }, []);
+
+  // Auto-detect Zapret 2 (winw.exe) in background.
+  const [zapretRunning, setZapretRunning] = useState(false);
+  useEffect(() => {
+    if (!window.chinazes?.zapret) return;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const s = await window.chinazes.zapret.status();
+        if (!cancelled) setZapretRunning(!!s?.bypassActive);
+      } catch {}
+    }
+    poll();
+    const t = setInterval(poll, 3000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
+
+  // Merge Zapret running state into proxy state for sidear.
+  const mergedProxyState = useMemo(() => {
+    if (zapretRunning && proxyState.status === 'disconnected') {
+      return { ...proxyState, status: 'connected', message: 'Zapret 2 active' };
+    }
+    return proxyState;
+  }, [zapretRunning, proxyState]);
+
+  // Track media playback for background wave animation.
+  useEffect(() => {
+    function onMedia(ev) {
+      const { serviceId, state } = ev.detail || {};
+      if (!serviceId || !state) { setMediaPlaying(false); return; }
+      const playing = !state.paused && state.duration > 0;
+      setMediaPlaying(playing);
+      if (playing) {
+        const svc = allServices.find((s) => s.id === serviceId);
+        if (svc?.accent) setMediaAccent(svc.accent);
+      }
+    }
+    window.addEventListener('chinazes-media-state', onMedia);
+    return () => window.removeEventListener('chinazes-media-state', onMedia);
+  }, [allServices]);
 
   // Re-derive `order` whenever new services appear or hidden state changes.
   useEffect(() => {
@@ -179,6 +222,35 @@ export default function App() {
   }, [active]);
 
   const getActiveWebview = useCallback(() => webviewRefs.current[active] || null, [active]);
+
+  // Check YouTube mini player status on mount
+  useEffect(() => {
+    if (window.chinazes?.youtubeMiniPlayer?.isOpen) {
+      window.chinazes.youtubeMiniPlayer.isOpen().then(setYoutubeMiniPlayerOpen);
+    }
+  }, []);
+
+  const openYouTubeMiniPlayer = useCallback(async () => {
+    try {
+      // Get current video URL from active webview if YouTube is active
+      let currentUrl = null;
+      if (active === 'youtube') {
+        const wv = webviewRefs.current[active];
+        if (wv && wv.getURL) {
+          try {
+            currentUrl = wv.getURL();
+          } catch (e) {
+            // Fallback to youtube.com
+            currentUrl = 'https://www.youtube.com/';
+          }
+        }
+      }
+      await window.chinazes?.youtubeMiniPlayer?.open(currentUrl);
+      setYoutubeMiniPlayerOpen(true);
+    } catch (e) {
+      console.error('Failed to open YouTube mini player:', e);
+    }
+  }, [active]);
 
   // Ctrl+1…9 / Ctrl+0 — quick switch to the N-th service in sidebar order.
   // 1..9 → indices 0..8, 0 → index 9 (10th tab). Ignored when typing in inputs.
@@ -272,15 +344,17 @@ export default function App() {
   return (
     <div
       className="app"
-      style={{ '--accent': activeSvc.accent, '--accent-gradient': activeSvc.gradient }}
+      style={{ '--accent': activeSvc.accent, '--accent-gradient': activeSvc.gradient, '--media-accent': mediaPlaying ? mediaAccent : activeSvc.accent }}
     >
       <div className="app__glow" />
       <TitleBar
         title={secondarySvc ? `${activeSvc.name} ⏐ ${secondarySvc.name}` : activeSvc.name}
-        proxyStatus={proxyState.status}
-        serverName={proxyState.server?.name}
+        proxyStatus={mergedProxyState.status}
+        serverName={mergedProxyState.server?.name}
         onReload={reloadActive}
         onOpenAI={uiPrefs.features.ai ? () => setAiChatOpen(true) : null}
+        activeServiceId={active}
+        mediaPlaying={mediaPlaying}
       />
       <div className="app__body">
         <Sidebar
@@ -295,7 +369,8 @@ export default function App() {
           onOpenAI={uiPrefs.features.ai ? () => setAiChatOpen(true) : null}
           onOpenApps={uiPrefs.features.apps ? () => setAppsOpen(true) : null}
           onOpenCoBrowse={uiPrefs.features.cobrowse ? () => setCoBrowseOpen(true) : null}
-          proxyStatus={proxyState.status}
+          onOpenYouTubeMiniPlayer={openYouTubeMiniPlayer}
+          proxyStatus={mergedProxyState.status}
         />
         <main className={`app__content ${secondarySvc ? 'app__content--split' : ''} ${resizing ? 'app__content--resizing' : ''}`} ref={dragRef}>
           {resizing && <div className="resize-overlay" />}
@@ -356,7 +431,7 @@ export default function App() {
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        proxyState={proxyState}
+        proxyState={mergedProxyState}
         allServices={allServices}
         hiddenIds={hiddenIds}
         onToggleHidden={onToggleHidden}

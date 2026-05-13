@@ -2,16 +2,17 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Aggregates `chinazes-media-state` events from all webviews and renders a
-// compact transport. Active-source selection is **sticky** — once a source is
-// chosen it does not change just because another tab also reports media; we
-// only switch when:
-//   • the current source has been silent (no updates) for >12s, or
-//   • the current source is paused AND another source is actively playing, or
-//   • the user explicitly picks another from the popup list.
+// compact transport. Source priority:
+//   1. User explicit pick (sticks until source dies after 12s stale)
+//   2. Active (visible) service's source if playing
+//   3. Current source if still playing
+//   4. Active service's source even if paused
+//   5. Any playing source
+//   6. Most recently updated source
 //
 // Click on the bar opens a list of all live sources so the user can swap.
 
-export default function MusicBar() {
+export default function MusicBar({ activeServiceId }) {
   // serviceId -> { state, webview, updatedAt, lastPlayingAt }
   const sourcesRef = useRef(new Map());
   const [tick, setTick] = useState(0); // bump to re-render on state map changes
@@ -20,6 +21,8 @@ export default function MusicBar() {
   const [vol, setVol] = useState(1);
   const [showList, setShowList] = useState(false);
   const userPickedRef = useRef(false); // sticks the user's choice
+  const activeServiceIdRef = useRef(activeServiceId);
+  activeServiceIdRef.current = activeServiceId;
 
   // Map -> array helper
   const sources = useMemo(() => {
@@ -43,10 +46,29 @@ export default function MusicBar() {
       // Respect explicit user pick as long as it's still alive (has state).
       if (userPickedRef.current && cur && cur.state) return;
 
+      // Prefer the currently visible service's source if it's playing.
+      const activeIdNow = activeServiceIdRef.current;
+      if (activeIdNow) {
+        const activeSource = sourcesRef.current.get(activeIdNow);
+        if (activeSource && activeSource.state && !activeSource.state.paused) {
+          setActiveId(activeIdNow);
+          return;
+        }
+      }
+
       // Keep current if it's playing.
       if (curPlaying) return;
 
-      // Look for a playing source.
+      // Prefer the currently visible service's source even if paused.
+      if (activeIdNow) {
+        const activeSource = sourcesRef.current.get(activeIdNow);
+        if (activeSource && activeSource.state && activeSource.state.duration > 0) {
+          setActiveId(activeIdNow);
+          return;
+        }
+      }
+
+      // Look for any playing source.
       const playing = all.find(([, v]) => v.state && !v.state.paused);
       if (playing) {
         setActiveId(playing[0]);
@@ -77,6 +99,8 @@ export default function MusicBar() {
     }
 
     window.addEventListener('chinazes-media-state', onMediaState);
+    // Run reconcile immediately to pick up tab switch / activeId change.
+    reconcile();
     // Periodic GC: drop stale (>12s no updates) and forget stale user-pick.
     const gc = setInterval(() => {
       const now = Date.now();
@@ -98,7 +122,7 @@ export default function MusicBar() {
       clearInterval(gc);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [activeId, activeServiceId]);
 
   // Sync volume slider when active state changes (but not while user is sliding).
   useEffect(() => {

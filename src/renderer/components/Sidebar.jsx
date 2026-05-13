@@ -1,15 +1,39 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import { BrandIcon, SettingsIcon, ShieldIcon, NotesIcon, AIIcon, AppsIcon, ShareIcon } from './Icons.jsx';
+import { BrandIcon, SettingsIcon, ShieldIcon, NotesIcon, AIIcon, AppsIcon, ShareIcon, ExternalWindowIcon } from './Icons.jsx';
+import EqualizerCanvas from './EqualizerCanvas.jsx';
 
-function SidebarAvatar() {
+function SidebarAvatar({ playing, accent }) {
   const [ok, setOk] = useState(true);
   if (!ok) {
     return (
       <motion.div
-        className="sidebar__logo-dot"
-        animate={{ rotate: [0, 360] }}
-        transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+        className={`sidebar__logo-dot ${playing ? 'sidebar__logo-dot--playing' : ''}`}
+        animate={playing ? {
+          scale: [1, 1.18, 0.92, 1.08, 1],
+          borderRadius: ['7px', '5px', '10px', '6px', '7px'],
+          boxShadow: [
+            `0 0 0 0 ${accent}00, 0 6px 24px -4px color-mix(in oklab, ${accent} 50%, transparent)`,
+            `0 0 22px 6px ${accent}50, 0 6px 24px -4px color-mix(in oklab, ${accent} 50%, transparent)`,
+            `0 0 8px 3px ${accent}30, 0 6px 24px -4px color-mix(in oklab, ${accent} 50%, transparent)`,
+            `0 0 16px 5px ${accent}40, 0 6px 24px -4px color-mix(in oklab, ${accent} 50%, transparent)`,
+            `0 0 0 0 ${accent}00, 0 6px 24px -4px color-mix(in oklab, ${accent} 50%, transparent)`,
+          ],
+        } : {
+          rotate: 360,
+          scale: 1,
+          borderRadius: '7px',
+          boxShadow: `0 0 0 0 ${accent}00, 0 6px 24px -4px color-mix(in oklab, ${accent} 50%, transparent)`,
+        }}
+        transition={playing ? {
+          duration: 1.6,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        } : {
+          duration: 14,
+          repeat: Infinity,
+          ease: 'linear',
+        }}
       />
     );
   }
@@ -17,10 +41,29 @@ function SidebarAvatar() {
     <motion.img
       src="avatar.png"
       alt="logo"
-      className="sidebar__avatar"
+      className={`sidebar__avatar ${playing ? 'sidebar__avatar--playing' : ''}`}
       onError={() => setOk(false)}
-      whileHover={{ scale: 1.05, rotate: 6 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+      whileHover={playing ? undefined : { scale: 1.05, rotate: 6 }}
+      animate={playing ? {
+        scale: [1, 1.08, 0.96, 1.04, 1],
+        boxShadow: [
+          `0 0 0 2px ${accent}60, 0 0 18px 4px ${accent}30, 0 8px 24px -8px color-mix(in oklab, ${accent} 60%, transparent)`,
+          `0 0 0 2px ${accent}C0, 0 0 28px 8px ${accent}50, 0 8px 24px -8px color-mix(in oklab, ${accent} 60%, transparent)`,
+          `0 0 0 2px ${accent}80, 0 0 10px 3px ${accent}20, 0 8px 24px -8px color-mix(in oklab, ${accent} 60%, transparent)`,
+          `0 0 0 2px ${accent}A0, 0 0 20px 6px ${accent}40, 0 8px 24px -8px color-mix(in oklab, ${accent} 60%, transparent)`,
+          `0 0 0 2px ${accent}60, 0 0 18px 4px ${accent}30, 0 8px 24px -8px color-mix(in oklab, ${accent} 60%, transparent)`,
+        ],
+      } : {
+        scale: 1,
+        boxShadow: `0 0 0 2px color-mix(in oklab, ${accent} 70%, transparent), 0 8px 24px -8px color-mix(in oklab, ${accent} 60%, transparent)`,
+      }}
+      transition={playing ? {
+        duration: 1.8,
+        repeat: Infinity,
+        ease: 'easeInOut',
+      } : {
+        type: 'spring', stiffness: 300, damping: 18,
+      }}
       draggable={false}
     />
   );
@@ -99,13 +142,32 @@ export default function Sidebar({
   onOpenApps,
   onOpenCoBrowse,
   proxyStatus,
+  onOpenYouTubeMiniPlayer,
 }) {
   const [dragging, setDragging] = useState(false);
+  const [mediaPlaying, setMediaPlaying] = useState(false);
+  const [mediaAccent, setMediaAccent] = useState(services.find((s) => s.id === active)?.accent || '#888');
+
+  useEffect(() => {
+    function onMedia(ev) {
+      const { serviceId, state } = ev.detail || {};
+      if (!serviceId || !state) { setMediaPlaying(false); return; }
+      const playing = !state.paused && state.duration > 0;
+      setMediaPlaying(playing);
+      if (playing) {
+        const svc = services.find((s) => s.id === serviceId);
+        if (svc?.accent) setMediaAccent(svc.accent);
+      }
+    }
+    window.addEventListener('chinazes-media-state', onMedia);
+    return () => window.removeEventListener('chinazes-media-state', onMedia);
+  }, [services]);
 
   return (
     <aside className="sidebar">
+      <EqualizerCanvas playing={mediaPlaying} vertical />
       <div className="sidebar__logo">
-        <SidebarAvatar />
+        <SidebarAvatar playing={mediaPlaying} accent={mediaAccent} />
       </div>
 
       <Reorder.Group
@@ -130,6 +192,17 @@ export default function Sidebar({
       </Reorder.Group>
 
       <div className="sidebar__bottom">
+        {onOpenYouTubeMiniPlayer && (
+          <button
+            className="tab tab--bottom youtube-window-btn"
+            onClick={onOpenYouTubeMiniPlayer}
+            aria-label="YouTube mini player"
+            title="Открыть YouTube mini player (поверх других окон)"
+            style={{ color: '#FF0033' }}
+          >
+            <ExternalWindowIcon />
+          </button>
+        )}
         {onOpenCoBrowse && (
           <button
             className="tab tab--bottom"

@@ -61,6 +61,44 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   transition: background 0.6s ease;
 }
 
+/* ---------- Equalizer waveform ─────────────────── */
+.app__equalizer {
+  position: absolute;
+  pointer-events: none;
+  overflow: hidden;
+}
+.app__equalizer canvas { display: block; }
+
+/* Horizontal (bottom bar) — used for titlebar fog now */
+.app__equalizer--h {
+  z-index: 0;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  overflow: hidden;
+}
+.app__equalizer--h canvas {
+  width: 100%; height: 100%;
+  filter: blur(16px);
+}
+
+/* Vertical — fog/mist overlay on the left edge (sidebar) */
+.app__equalizer--v {
+  z-index: 1;
+  top: 0; left: 0; bottom: 0;
+  width: 100%;
+  height: 100%;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+.app__equalizer--v canvas {
+  width: 100%; height: 100%;
+  filter: blur(24px);
+}
+
 .app__body {
   position: relative;
   z-index: 1;
@@ -83,6 +121,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 /* ---------- Title bar ---------- */
 
 .titlebar {
+  position: relative;
   display: flex;
   align-items: center;
   height: var(--title-h);
@@ -144,6 +183,15 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
   margin-right: 6px;
 }
 
+.titlebar__watermark {
+  height: calc(var(--title-h) - 6px);
+  width: auto;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  border-radius: 4px;
+  margin: 0 12px 0 4px;
+}
+
 .titlebar__controls {
   -webkit-app-region: no-drag;
   display: flex;
@@ -164,6 +212,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 /* ---------- Sidebar ---------- */
 
 .sidebar {
+  position: relative;
   width: var(--sidebar-w);
   display: flex;
   flex-direction: column;
@@ -3467,4 +3516,27 @@ input[type="text"].input--dark::placeholder {
   caret-color: var(--fg);
 }
 
-
+/* YouTube mini player button */
+.youtube-window-btn {
+  position: relative;
+  transition: all 0.2s ease;
+}
+.youtube-window-btn:hover {
+  background: rgba(255, 0, 51, 0.15);
+  transform: scale(1.08);
+}
+.youtube-window-btn svg {
+  filter: drop-shadow(0 0 4px rgba(255, 0, 51, 0.4));
+}
+.youtube-window-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  background: #FF0033;
+  border-radius: 50%;
+  opacity: 1;
+  box-shadow: 0 0 6px rgba(255, 0, 51, 0.6);
+}
