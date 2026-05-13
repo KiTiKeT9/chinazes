@@ -578,15 +578,25 @@ try {
   }
 
   let last = '';
-  setInterval(() => {
+  let idleCount = 0;
+  function poll() {
     let s;
     try { s = snapshot(); } catch { s = null; }
-    if (!s) return;
+    if (!s) {
+      idleCount++;
+      const delay = idleCount > 5 ? 4000 : 1000;
+      setTimeout(poll, delay);
+      return;
+    }
+    idleCount = 0;
     const key = JSON.stringify(s);
-    if (key === last) return;
-    last = key;
-    try { ipcRenderer.sendToHost('chinazes:media-state', s); } catch {}
-  }, 1000);
+    if (key !== last) {
+      last = key;
+      try { ipcRenderer.sendToHost('chinazes:media-state', s); } catch {}
+    }
+    setTimeout(poll, 1000);
+  }
+  setTimeout(poll, 500);
 
   ipcRenderer.on('chinazes:media-cmd', (_e, cmd) => {
     try {

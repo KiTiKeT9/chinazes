@@ -87,20 +87,6 @@ export const THEMES = [
       '--border':  'rgba(80, 200, 255, 0.16)',
     },
   },
-  {
-    id: 'light',
-    name: 'Light',
-    desc: 'Светлая (экспериментально)',
-    vars: {
-      '--bg':    '#f6f7fb',
-      '--bg-2':  '#ffffff',
-      '--bg-3':  '#eef0f7',
-      '--fg':    '#1a1c2a',
-      '--fg-dim':  'rgba(26, 28, 42, 0.7)',
-      '--fg-mute': 'rgba(26, 28, 42, 0.45)',
-      '--border':  'rgba(0, 0, 0, 0.10)',
-    },
-  },
 ];
 
 const STORAGE_KEY = 'chinazes:theme';
