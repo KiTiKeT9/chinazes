@@ -35,6 +35,22 @@ export default function NotificationsBell() {
   useEffect(() => { saveHistory(items); }, [items]);
   useEffect(() => { localStorage.setItem('chinazes:notif-unread', String(unread)); }, [unread]);
 
+  // Notification sound — respects chinazes:notif-sound toggle, volume, and custom URL
+  const audioRef = useRef(null);
+  const soundEnabled = localStorage.getItem('chinazes:notif-sound') !== '0';
+  const soundUrl = localStorage.getItem('chinazes:notif-sound-url') || 'notif.mp3';
+  const soundVolume = (() => {
+    const v = parseInt(localStorage.getItem('chinazes:notif-sound-volume') || '50', 10);
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v / 100)) : 0.5;
+  })();
+  useEffect(() => {
+    if (typeof Audio === 'undefined') return;
+    const a = new Audio(soundUrl);
+    a.volume = soundVolume;
+    audioRef.current = a;
+    return () => { a.pause(); a.src = ''; };
+  }, [soundUrl, soundVolume]);
+
   useEffect(() => {
     function onNotif(ev) {
       const d = ev.detail || {};
@@ -55,10 +71,14 @@ export default function NotificationsBell() {
         return next.slice(0, MAX_KEEP);
       });
       setUnread((n) => n + 1);
+      // Play notification sound (if enabled)
+      if (soundEnabled) {
+        try { audioRef.current?.cloneNode(true).play?.(); } catch {}
+      }
     }
     window.addEventListener('chinazes-notification', onNotif);
     return () => window.removeEventListener('chinazes-notification', onNotif);
-  }, []);
+  }, [soundEnabled]);
 
   useEffect(() => {
     if (!open) return;

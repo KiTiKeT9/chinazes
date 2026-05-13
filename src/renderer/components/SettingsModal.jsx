@@ -213,6 +213,12 @@ export default function SettingsModal({
   const [countryFilter, setCountryFilter] = useState('all');
   const [showSafetyModal, setShowSafetyModal] = useState(false);
   const [pendingPoolUrl, setPendingPoolUrl] = useState('');
+  const [notifSound, setNotifSound] = useState(() => localStorage.getItem('chinazes:notif-sound') !== '0');
+  const [notifVolume, setNotifVolume] = useState(() => {
+    const v = parseInt(localStorage.getItem('chinazes:notif-sound-volume') || '50', 10);
+    return Number.isFinite(v) ? Math.max(0, Math.min(100, v)) : 50;
+  });
+  const [notifSoundBump, setNotifSoundBump] = useState(0);
 
   function tryAddCustom() {
     const raw = newSvcUrl.trim();
@@ -906,6 +912,83 @@ export default function SettingsModal({
                         </span>
                       </label>
                     ))}
+                  </div>
+                </div>
+
+                <div className="settings-section">
+                  <h4 className="settings-section__title">Уведомления</h4>
+                  <p className="modal__hint muted">Настройка звука уведомлений с сайтов (VK, Telegram, Discord).</p>
+                  <div className="feature-toggles">
+                    <label className="feature-toggle">
+                      <span className="feature-toggle__meta">
+                        <span className="feature-toggle__name">Звук уведомлений</span>
+                        <span className="feature-toggle__desc">Проигрывать notif.mp3 при получении уведомления</span>
+                      </span>
+                      <span className="switch">
+                        <input
+                          type="checkbox"
+                          checked={notifSound}
+                          onChange={(e) => {
+                            setNotifSound(e.target.checked);
+                            try { localStorage.setItem('chinazes:notif-sound', e.target.checked ? '1' : '0'); } catch {}
+                          }}
+                        />
+                        <span className="switch__slider" />
+                      </span>
+                    </label>
+                  </div>
+                  <div className="notif-vol-row" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 12, color: 'var(--fg-dim)', whiteSpace: 'nowrap' }}>Громкость</span>
+                    <input
+                      type="range" min={0} max={100} step={1}
+                      value={notifVolume}
+                      onChange={(e) => {
+                        const v = parseInt(e.target.value, 10);
+                        setNotifVolume(v);
+                        try { localStorage.setItem('chinazes:notif-sound-volume', String(v)); } catch {}
+                      }}
+                      style={{ flex: 1, maxWidth: 120 }}
+                    />
+                    <span style={{ fontSize: 11, color: 'var(--fg-mute)', minWidth: 30, textAlign: 'right' }}>{notifVolume}%</span>
+                  </div>
+                  <div className="notif-sound-upload" style={{ marginTop: 8 }}>
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      id="notif-sound-file"
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        const reader = new FileReader();
+                        reader.onload = (ev) => {
+                          const dataUrl = ev.target?.result;
+                          if (typeof dataUrl === 'string') {
+                            try { localStorage.setItem('chinazes:notif-sound-url', dataUrl); } catch {}
+                            setNotifSoundBump((x) => x + 1);
+                          }
+                        };
+                        reader.readAsDataURL(f);
+                      }}
+                    />
+                    <button
+                      className="btn btn--ghost btn--small"
+                      onClick={() => document.getElementById('notif-sound-file')?.click()}
+                      style={{ marginRight: 8 }}
+                    >
+                      Загрузить свой звук
+                    </button>
+                    {localStorage.getItem('chinazes:notif-sound-url') && (
+                      <button
+                        className="btn btn--ghost btn--small"
+                        onClick={() => {
+                          try { localStorage.removeItem('chinazes:notif-sound-url'); } catch {}
+                          setNotifSoundBump((x) => x + 1);
+                        }}
+                      >
+                        Сбросить на стандартный
+                      </button>
+                    )}
                   </div>
                 </div>
 

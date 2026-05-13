@@ -256,6 +256,19 @@ const notifPatch = `(() => {
       } catch (_) {}
     }
 
+    // ── Helper: force permission to 'granted' via multiple strategies ──
+    function forcePermissionG(ctor) {
+      // Strategy 1: defineProperty on the constructor.
+      try { Object.defineProperty(ctor, 'permission', { get() { return 'granted'; }, configurable: true }); return; } catch (_) {}
+      // Strategy 2: defineProperty on constructor's prototype.
+      try { Object.defineProperty(ctor.prototype, 'permission', { get() { return 'granted'; }, configurable: true }); return; } catch (_) {}
+      // Strategy 3: wrap requestPermission to always resolve granted.
+      const rp = ctor.requestPermission;
+      ctor.requestPermission = function () {
+        return rp ? rp.call(ctor).catch(() => 'granted') : Promise.resolve('granted');
+      };
+    }
+
     // 1) Patch the classic Notification constructor.
     const O = window.Notification;
     if (O && !O.__chinazesPatched) {
@@ -265,9 +278,12 @@ const notifPatch = `(() => {
       }
       N.__chinazesPatched = true;
       try { N.requestPermission = O.requestPermission ? O.requestPermission.bind(O) : (() => Promise.resolve('granted')); } catch (_) {}
-      try { Object.defineProperty(N, 'permission', { get() { return 'granted'; } }); } catch (_) {}
-      try { Object.setPrototypeOf(N.prototype, O.prototype); } catch (_) {}
       try { Object.defineProperty(window, 'Notification', { value: N, writable: true, configurable: true }); } catch (_) {}
+      try { Object.setPrototypeOf(N.prototype, O.prototype); } catch (_) {}
+      forcePermissionG(N);
+    } else {
+      // If window.Notification couldn't be replaced, patch in-place.
+      forcePermissionG(O);
     }
 
     // 2) Patch ServiceWorkerRegistration.showNotification — modern sites
@@ -285,13 +301,22 @@ const notifPatch = `(() => {
       }
     }
 
-    // 3) Force Notification.permission to 'granted' so sites enable push
-    //    subscriptions in the first place.
+    // 3) Also patch Notification.requestPermission on the final ctor.
     try {
-      if (window.Notification) {
-        Object.defineProperty(window.Notification, 'permission', { get() { return 'granted'; }, configurable: true });
+      const finalCtor = window.Notification;
+      if (!finalCtor.__chinazesPatchedReq) {
+        const rp = finalCtor.requestPermission;
+        if (rp) {
+          finalCtor.requestPermission = function () {
+            return rp.call(finalCtor).catch(() => 'granted');
+          };
+        }
+        finalCtor.__chinazesPatchedReq = true;
       }
     } catch (_) {}
+
+    // Debug: log that the patch is installed.
+    console.log('[Chinazes] notification interceptor installed');
   } catch (_) {}
 })();`;
 webFrame.executeJavaScript(notifPatch).catch(() => {});
@@ -395,6 +420,7 @@ webFrame.executeJavaScript(vkDebug).catch(() => {});
 window.addEventListener('message', (e) => {
   const d = e?.data;
   if (!d || d.__chinazesNotif !== true) return;
+  console.log('[Chinazes] notification relay -> sendToHost:', d.title, d.body);
   try {
     ipcRenderer.sendToHost('chinazes:notification', {
       title: d.title || '',
@@ -404,8 +430,176 @@ window.addEventListener('message', (e) => {
       ts: d.ts || Date.now(),
       url: location.href,
     });
-  } catch {}
+  } catch (err) { console.warn('[Chinazes] sendToHost notif failed:', err); }
 });
+
+// ----------------- Fallback: detect new messages via document.title -----------------
+// Sites like VK, Discord don't always call new Notification() in webviews because
+// service worker push is unavailable. Watch document.title for bracketed counts and
+// fire our own notification. Skip known false‑positive sites (YouTube, TikTok, etc.)
+(function () {
+  const host = location.hostname || '';
+  const skipDomains = /youtube\.com|tiktok\.com|instagram\.com|facebook\.com|twitter\.com|x\.com|reddit\.com/i;
+  if (skipDomains.test(host)) return;
+
+  console.log('[Chinazes] title-notif active on', host);
+
+  let lastTitle = '';
+  let lastSentKey = '';
+  let lastSentTime = 0;
+  const COOLDOWN_MS = 8000;
+
+  function checkTitle() {
+    const t = document.title;
+    if (t === lastTitle) return;
+    lastTitle = t;
+
+    // Debug: log each title change
+    console.log('[Chinazes] title changed:', t);
+
+    // Match count in brackets at start or end
+    const m = t.match(/^\[(\d{1,2})\]/) || t.match(/^\((\d{1,2})\)/) || t.match(/\[(\d{1,2})\]\s*$/) || t.match(/\((\d{1,2})\)\s*$/);
+    if (!m) { console.log('[Chinazes] title no count match'); return; }
+    const count = parseInt(m[1], 10);
+    if (count < 1 || count > 99) { console.log('[Chinazes] title count out of range:', count); return; }
+
+    const siteName = host.replace(/^(www|web|m)\./, '').split('.')[0].toUpperCase();
+    const key = `${siteName}-${count}`;
+    const now = Date.now();
+    if (key === lastSentKey && now - lastSentTime < COOLDOWN_MS) { console.log('[Chinazes] title notif dedup'); return; }
+    lastSentKey = key;
+    lastSentTime = now;
+
+    console.log('[Chinazes] title notification fired:', siteName, count);
+    try {
+      ipcRenderer.sendToHost('chinazes:notification', {
+        title: `${siteName} — ${count} новых`,
+        body: document.title,
+        icon: '',
+        tag: `title-notif-${now}`,
+        ts: now,
+        url: location.href,
+      });
+    } catch (e) { console.warn('[Chinazes] title notif sendToHost error:', e); }
+  }
+
+  // Intercept document.title setter directly (catches every title change,
+  // including SPA frameworks that bypass <title> DOM mutations).
+  let _title = document.title;
+  try {
+    Object.defineProperty(document, 'title', {
+      get() { return _title; },
+      set(v) {
+        if (v !== _title) { _title = v; setTimeout(checkTitle, 0); }
+        // Also update the <title> element for real (Electron/webview needs it).
+        const te = document.querySelector('title');
+        if (te && te.textContent !== v) te.textContent = v;
+      },
+      configurable: true,
+    });
+  } catch (e) { console.warn('[Chinazes] title setter override failed:', e); }
+
+  function watchTitle() {
+    const titleEl = document.querySelector('title');
+    if (titleEl) {
+      console.log('[Chinazes] title-notif observing <title>');
+      const obs = new MutationObserver(checkTitle);
+      obs.observe(titleEl, { childList: true, characterData: true, subtree: true });
+    } else {
+      console.log('[Chinazes] title-notif no <title> found, will retry');
+    }
+  }
+  watchTitle();
+  checkTitle();
+  setInterval(() => { watchTitle(); checkTitle(); }, 15000);
+})();
+
+// ----------------- Periodic unread scanner (VK / Telegram) -----------------
+// Lightweight polling approach: every few seconds check for unread counts / toasts
+// in the DOM. Avoids expensive querySelectorAll on every MutationObserver tick.
+(function () {
+  const host = location.hostname || '';
+  const isVk = /(^|\.)vk\.com$/.test(host);
+  const isTg = host.includes('web.telegram.org');
+  if (!isVk && !isTg) return;
+
+  console.log('[Chinazes] unread-scanner active on', host);
+  let lastStable = -1;  // -1 = uninitialized (first stable = record without firing)
+  let pending = -1;
+
+  function fire(title, body) {
+    console.log('[Chinazes] unread-notif:', title);
+    const now = Date.now();
+    try {
+      ipcRenderer.sendToHost('chinazes:notification', {
+        title, body, icon: '',
+        tag: `scan-${now}`, ts: now, url: location.href,
+      });
+    } catch {}
+  }
+
+  function scan() {
+    let chatCount = 0;
+
+    if (isVk) {
+      const els = document.querySelectorAll(
+        '[class*="Counter"], [class*="count"], '
+        + '[class*="badge"], [class*="unread"]'
+      );
+      for (const el of els) {
+        const t = (el.textContent || '').trim();
+        const n = parseInt(t, 10);
+        if (/^\d{1,2}$/.test(t) && n > 0 && n < 50) chatCount++;
+      }
+    }
+
+    if (isTg) {
+      const els = document.querySelectorAll(
+        '[class*="badge"], [class*="unread"], [class*="counter"]'
+      );
+      for (const el of els) {
+        const t = (el.textContent || '').trim();
+        const n = parseInt(t, 10);
+        if (/^\d{1,2}$/.test(t) && n > 0 && n < 50) chatCount++;
+      }
+    }
+
+    // Debounce: wait for the same count on 2 consecutive scans (~9s)
+    if (pending !== chatCount) {
+      pending = chatCount;
+      return;
+    }
+
+    // Stable count seen twice
+    if (chatCount === pending) {
+      if (lastStable === -1) {
+        // First ever stable detection — just record, don't notify
+        lastStable = chatCount;
+        pending = -1;
+        return;
+      }
+      if (chatCount > lastStable) {
+        // INCREASE — new messages arrived
+        lastStable = chatCount;
+        pending = -1;
+        const name = isVk ? 'VK' : 'Telegram';
+        fire(name, chatCount === 1 ? 'новое сообщение' : `${chatCount} чатов с новыми`);
+        return;
+      }
+      if (chatCount < lastStable) {
+        // DECREASE — messages were read, just update
+        lastStable = chatCount;
+        pending = -1;
+        return;
+      }
+      // chatCount === lastStable — nothing changed
+      pending = -1;
+    }
+  }
+
+  setInterval(scan, 4500);
+  setTimeout(scan, 3000);
+})();
 
 // ----------------- Telegram Bridge (for AIRI integration) -----------------
 const telegramBridge = (function () {
@@ -540,6 +734,15 @@ try {
   }
 } catch {}
 
+// ----------------- Suppress YouTube preload warnings -----------------
+// YouTube preloads video resources that may not be used — harmless, but
+// spams the console with "was preloaded using link preload but not used".
+const _origWarn = console.warn;
+console.warn = function (...args) {
+  if (args.length && typeof args[0] === 'string' && args[0].includes('was preloaded using link preload')) return;
+  return _origWarn.apply(this, args);
+};
+
 // ----------------- Media bridge -----------------
 // Polls the page for the most-relevant <video>/<audio> + navigator.mediaSession
 (function () {
@@ -584,7 +787,7 @@ try {
     try { s = snapshot(); } catch { s = null; }
     if (!s) {
       idleCount++;
-      const delay = idleCount > 5 ? 4000 : 1000;
+      const delay = idleCount > 10 ? 10000 : idleCount > 3 ? 5000 : 2000;
       setTimeout(poll, delay);
       return;
     }
@@ -596,7 +799,7 @@ try {
     }
     setTimeout(poll, 1000);
   }
-  setTimeout(poll, 500);
+  setTimeout(poll, 1000);
 
   ipcRenderer.on('chinazes:media-cmd', (_e, cmd) => {
     try {
